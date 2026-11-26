@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS subs_pending(id INTEGER PRIMARY KEY, video TEXT, lang
     attempts INTEGER DEFAULT 0, next_try REAL, first_try REAL, ready_path TEXT);
 CREATE TABLE IF NOT EXISTS library(key TEXT PRIMARY KEY, path TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS dircache(path TEXT PRIMARY KEY, mtime INTEGER, seen REAL, files TEXT, subdirs TEXT);
 CREATE TABLE IF NOT EXISTS watch(id INTEGER PRIMARY KEY, query TEXT, cat TEXT, filters TEXT, created REAL,
     last_check REAL, seen TEXT, hits TEXT);
 """
@@ -234,6 +235,29 @@ def library_replace(paths):
                       [(_key(p), p, time.time()) for p in paths])
 
 
+def library_remove_under(folder):
+    f = os.path.normcase(os.path.normpath(folder)).rstrip("\\/") + os.sep
+    _q("DELETE FROM library WHERE key >= ? AND key < ?", (f, f + "\U0010ffff"))
+
+
+def library_count():
+    r = _q("SELECT COUNT(*) AS n FROM library", one=True)
+    return r["n"] if r else 0
+
+
+# per-folder listing cache: rescans only re-read folders whose modified time changed
+def dircache_all():
+    return {r["path"]: (r["mtime"], r["seen"], json.loads(r["files"]), json.loads(r["subdirs"]))
+            for r in _q("SELECT * FROM dircache")}
+
+
+def dircache_replace(entries):
+    with _lock, _conn() as c:
+        c.execute("DELETE FROM dircache")
+        c.executemany("INSERT INTO dircache(path, mtime, seen, files, subdirs) VALUES(?,?,?,?,?)",
+                      [(p, m, seen, json.dumps(f), json.dumps(sd)) for p, (m, seen, f, sd) in entries.items()])
+
+
 def library_find(target):
     """Exact file (any extension) or, for a folder target, anything inside it."""
     k = _key(target)
@@ -241,7 +265,8 @@ def library_find(target):
     if r:
         return r["path"]
     folder = os.path.normcase(os.path.normpath(target)).rstrip("\\/") + os.sep
-    r = _q("SELECT path FROM library WHERE key LIKE ? LIMIT 1", (folder.replace("%", "") + "%",), one=True)
+    # range on the primary key (uses the index; LIKE would read the whole table)
+    r = _q("SELECT path FROM library WHERE key >= ? AND key < ? LIMIT 1", (folder, folder + "\U0010ffff"), one=True)
     return r["path"] if r else None
 
 
@@ -288,3 +313,15 @@ def watch_update(wid, seen=None, hits=None, checked=True):
 
 def watch_delete(wid):
     _q("DELETE FROM watch WHERE id=?", (wid,))
+
+
+def kv_json(k, default=None):
+    v = kv_get(k)
+    try:
+        return json.loads(v) if v else default
+    except ValueError:
+        return default
+
+
+def kv_set_json(k, v):
+    kv_set(k, json.dumps(v))

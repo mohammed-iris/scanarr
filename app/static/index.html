@@ -250,6 +250,7 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
       <button data-v="review" title="Needs review"><svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4m0 3v.01"/></svg><span class="badge" id="rvbadge" hidden style="background:#cca700;color:#000"></span></button>
       <button data-v="renamed" title="Renamed (undo)"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M4 12h10M4 18h7"/><path d="m15 17 2 2 4-4"/></svg></button>
       <button data-v="watch" title="Watchlist"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="badge" id="wbadge" hidden style="background:#89d185;color:#000"></span></button>
+      <button data-v="apps" title="Apps & updates"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span class="badge" id="upbadge" hidden style="background:#89d185;color:#000">1</span></button>
       <button data-v="log" title="Log"><svg class="i" viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 0 1 2-2z"/><path d="M9 9h6M9 13h4"/></svg></button>
       <div class="spacer"></div>
       <button data-v="settings" title="Settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -315,6 +316,12 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
         <div class="grid" id="wlist" style="padding:12px 16px"></div>
       </div>
 
+      <!-- APPS -->
+      <div class="view" id="v-apps">
+        <div class="tabs"><div class="tab">Apps <span class="sub">qBittorrent, Prowlarr, updates</span></div></div>
+        <div class="grid" id="appsbox" style="padding:12px 16px"><div class="dim">Loading…</div></div>
+      </div>
+
       <!-- LOG -->
       <div class="view" id="v-log">
         <div class="tabs"><div class="tab">Log</div></div>
@@ -377,6 +384,7 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
           <div class="set"><div class="t">Dead torrents</div><div class="d">No progress for this many hours (0 = never check).</div>
             <div style="display:flex;gap:8px;max-width:520px"><input data-p="dead_hours" type="number" min="0" style="max-width:120px"><select data-p="dead_action"><option value="flag">Flag them</option><option value="remove">Remove them (and their partial files)</option></select></div></div>
           <div class="set"><div class="t">Keep free space <span>· GB</span></div><div class="d">Downloads that would leave less than this free in Temp or Completed are refused (you can override per download).</div><input data-p="min_free_gb" type="number" min="0" style="max-width:120px"></div>
+          <div class="set"><div class="t">Disk-full guard <span>· GB</span></div><div class="d">If Temp or Completed drops below this while downloading, Scanarr pauses the downloads (a full disk corrupts them) and tells you. They resume by themselves when there's room again. 0 = off.</div><input data-p="disk_guard_gb" type="number" min="0" style="max-width:120px"></div>
 
           <h2 id="s-schedule">Schedule <span style="font-size:13px;color:var(--dim)">· HDD-friendly</span></h2>
           <div class="set"><div class="t">Rename finished downloads</div><div class="d">qBittorrent wakes the HDD anyway when it moves a finished download to Completed, so renaming right then is the most disk-friendly choice. Choose a time window if you prefer; finished downloads wait untouched until then.</div>
@@ -385,6 +393,11 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
           <div class="set"><div class="t">Housekeeping</div><div class="d">Scan the <code>Unsorted</code> folder, save subtitles found later, refresh the library index. Missing subtitles are <i>searched</i> daily over the internet using the file's stored fingerprint, and parked on the SSD until the HDD is awake.</div>
             <select data-p="housekeeping"><option value="awake">Only when the HDD is already awake (a download just finished): never wakes it</option><option value="daily">Once a day at a set time (wakes the HDD once a day)</option><option value="off">Only when I press "Check now"</option></select>
             <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span class="dim">daily at</span><input data-p="housekeeping_time" type="time" style="max-width:130px"></div></div>
+          <div class="set"><div class="t">Slower downloads during set hours</div><div class="d">Keep the internet free for others, e.g. in the evening. Uses qBittorrent's own scheduler; outside these hours downloads run at full speed. Upload stays low either way.</div>
+            <select data-p="speed_schedule.enabled" data-bool style="max-width:220px"><option value="false">Off</option><option value="true">On</option></select>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;max-width:760px"><span class="dim">from</span><input data-p="speed_schedule.start" type="time" style="max-width:130px"><span class="dim">to</span><input data-p="speed_schedule.end" type="time" style="max-width:130px">
+              <select data-p="speed_schedule.days" style="max-width:140px"><option value="all">every day</option><option value="weekdays">weekdays</option><option value="weekends">weekends</option></select>
+              <span class="dim">limit to</span><input data-p="speed_schedule.dl_kbps" type="number" min="0" style="max-width:100px"><span class="dim">KB/s down (0 = no limit) ·</span><input data-p="speed_schedule.up_kbps" type="number" min="1" style="max-width:90px"><span class="dim">KB/s up</span></div></div>
           <div class="set"><div class="t">Check qBittorrent every <span>· seconds</span></div><div class="d">Only asks qBittorrent's API, never reads the disk.</div><input data-p="poll_seconds" type="number" min="10" style="max-width:120px"></div>
 
           <h2 id="s-notify">Notifications &amp; Watchlist</h2>
@@ -411,6 +424,7 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
     <div class="s" id="st-speed"></div>
     <div class="s" id="st-pr" title="Prowlarr">● Prowlarr</div>
     <div class="grow"></div>
+    <div class="s" id="st-job" hidden></div>
     <div class="s" id="st-rv" style="cursor:pointer" hidden></div>
     <div class="s" id="st-disk"></div>
     <div class="s" id="st-subs"></div>
@@ -432,6 +446,7 @@ table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{posi
   <label class="mfiles"><input type="checkbox" id="delfiles"> Also delete the downloaded files from the NAS</label>
   <div class="mbtns"><button class="btn sec2" onclick="closeModal()">Cancel</button><button class="btn mok" style="background:#a1260d" onclick="dlAction('delete',{delete_files:$('#delfiles').checked});closeModal()">Remove</button></div></div></div>
 
+<script src="/static/qrcode.js"></script>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const api=async(p,o={})=>{const r=await fetch(p,{headers:{'Content-Type':'application/json'},...o});if(r.status===401){location.href='/login';throw new Error('login required')}
@@ -473,6 +488,7 @@ const sidebars={
   review:()=>`<div class="sh">Needs review</div>${sec('Why',`<div class="sidenote">Unclear names, no TMDb match, or the target already exists. Nothing is touched until you approve.</div>`)}`,
   renamed:()=>`<div class="sh">Renamed</div>${sec('Show',[['all','All'],['active','Current'],['undone','Undone']].map(([s,l])=>`<div class="li ${N.f===s?'on':''}" onclick="N.f='${s}';renderRen();drawSide()">${l}<span class="n">${s==='all'?N.rows.length:N.rows.filter(r=>s==='undone'?r.undone:!r.undone).length}</span></div>`).join(''))}`,
   watch:()=>`<div class="sh">Watchlist</div>${sec('How it works',`<div class="sidenote">Search for something, set the filters (quality, junk), then press <b>☆ Watch this search</b>. Scanarr re-checks it every ${S?.watch_hours||12} h and lists new releases here${S?.ntfy_url?' and on your phone':''}.</div>`)}`,
+  apps:()=>`<div class="sh">Apps</div>${sec('Open',`<div class="li" onclick="APPS?.qbit?.open&&window.open(APPS.qbit.open)">qBittorrent</div><div class="li" onclick="APPS?.prowlarr?.open&&window.open(APPS.prowlarr.open)">Prowlarr</div>`)}`,
   log:()=>`<div class="sh">Log</div>${sec('Show',['all','renamed','completed','review','subtitles','blocked','dead','error','undone'].map(s=>`<div class="li ${A.f===s?'on':''}" onclick="A.f='${s}';renderAct();drawSide()">${s[0].toUpperCase()+s.slice(1)}<span class="n">${s==='all'?A.rows.length:A.rows.filter(r=>r.status===s).length}</span></div>`).join(''))}`,
   settings:()=>`<div class="sh">Settings</div>${sec('Sections',[['s-indexers','Prowlarr'],['s-qbit','qBittorrent'],['s-library','Folders & Renaming'],['s-subs','Subtitles'],['s-safety','Safety & Cleanup'],['s-schedule','Schedule'],['s-notify','Notifications'],['s-backup','Backup'],['s-login','Login']].map(([id,l])=>`<div class="li" onclick="document.getElementById('${id}').scrollIntoView({behavior:'smooth'})">${l}</div>`).join(''))}`,
 };
@@ -480,7 +496,7 @@ const closed=new Set();
 function sec(title,body){return`<div class="sec ${closed.has(title)?'closed':''}"><div class="st" onclick="closed.has('${title}')?closed.delete('${title}'):closed.add('${title}');drawSide()">${title}</div><div class="sb">${body}</div></div>`}
 function drawSide(){$('#side').innerHTML=sidebars[view]()}
 function show(v){view=v;closeOverlays();$$('#actbar button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));
-  if(v==='downloads')loadDl();if(v==='log')loadAct();if(v==='renamed')loadRen();if(v==='review')loadRev();if(v==='watch')loadWatch();if(v==='settings')loadSettings();drawSide()}
+  if(v==='downloads')loadDl();if(v==='log')loadAct();if(v==='renamed')loadRen();if(v==='review')loadRev();if(v==='watch')loadWatch();if(v==='settings')loadSettings();if(v==='apps')loadApps();drawSide()}
 $$('#actbar button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 
 /* ---------- search ---------- */
@@ -785,6 +801,42 @@ $('#palette input').onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();PAL
   else if(e.key==='Enter'){e.preventDefault();palRun(PAL.sel)}else if(e.key==='Escape')$('#palette').hidden=true};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&(e.key==='k'||(e.shiftKey&&(e.key==='P'||e.key==='p')))){e.preventDefault();openPalette()}},true);
 
+/* ---------- apps & updates ---------- */
+let APPS=null;
+const pill=(ok,t)=>`<span class="${ok?'ok':'bad'}">${ok?'●':'✕'} ${esc(t)}</span>`;
+async function loadApps(){try{APPS=await api('/api/apps')}catch(e){$('#appsbox').innerHTML=`<div class="bad">${esc(e.message)}</div>`;return}renderApps()}
+function renderApps(){const a=APPS,u=a.update,q=a.qbit,p=a.prowlarr;
+  const conn={connected:['ok','Reachable from the internet - best speed'],firewalled:['warn',`Not reachable from outside: downloads still work, but slower. Forward port ${q.torrent_port||'(your torrent port)'} (TCP+UDP) on your router to this machine.`],disconnected:['bad','No internet connection']}[q.connection]||null;
+  const rep=a.setup?Object.entries(a.setup.report||{}).filter(([k])=>k!=='done').map(([k,v])=>`<div class="${v.ok?'ok':'warn'}" style="font-size:12px">${v.ok?'✓':'⚠'} ${esc(k)}: ${esc(v.msg)}</div>`).join(''):'';
+  const url=location.origin, local=/^(localhost|127\.|\[::1\])/.test(location.hostname);
+  $('#appsbox').innerHTML=`
+  ${u.available?`<div class="card" style="border-color:#388a34"><div class="ct"><b>Scanarr ${esc(u.latest)} is available</b><span class="dim">you have ${esc(u.current)}</span><span class="grow" style="flex:1"></span>
+     ${u.can_update?`<button class="btn" onclick="doUpdate('${esc(u.latest)}')">Update now</button>`:''}${u.url?`<a class="btn sec2" href="${esc(u.url)}" target="_blank" rel="noopener" style="text-decoration:none">What's new</a>`:''}</div>
+     <div class="dim" style="font-size:12px;margin-top:6px;white-space:pre-wrap;max-height:160px;overflow:auto">${esc(u.notes)}</div>
+     <div class="dim" style="font-size:12px;margin-top:6px">${u.can_update?'Settings and history are backed up first. If the new version doesn\'t start, the old one comes back by itself.':'To update: run the setup wizard again and choose "Update to the latest version".'}</div><div id="upjob"></div></div>`:''}
+  <div class="card"><div class="ct"><b>qBittorrent</b>${pill(q.ok,q.ok?q.version:q.msg)}<span style="flex:1"></span>${q.open?`<a class="btn sec2 xs" href="${q.open}" target="_blank" rel="noopener" style="text-decoration:none">Open qBittorrent ↗</a>`:''}</div>
+    ${conn?`<div class="${conn[0]}" style="font-size:12px;margin-top:6px">${conn[0]==='ok'?'✓':'⚠'} ${esc(conn[1])}</div>`:''}
+    <div class="dim" style="font-size:12px;margin-top:4px">${q.open?'Opens through Scanarr - no separate login.':'Not part of a Scanarr-managed setup - open it at its own address.'}</div></div>
+  <div class="card"><div class="ct"><b>Prowlarr</b>${pill(p.ok,p.ok?p.version:p.msg)}<span style="flex:1"></span>${p.open?`<a class="btn sec2 xs" href="${p.open}" target="_blank" rel="noopener" style="text-decoration:none">Open Prowlarr ↗</a>`:''}</div>
+    <div class="dim" style="font-size:12px;margin-top:4px">Add or remove indexers there; Scanarr picks them up by itself.</div></div>
+  ${a.jellyfin?`<div class="card"><div class="ct"><b>Jellyfin</b><span style="flex:1"></span><a class="btn sec2 xs" href="${esc(a.jellyfin.open)}" target="_blank" rel="noopener" style="text-decoration:none">Open Jellyfin ↗</a></div></div>`:''}
+  <div class="card"><div class="ct"><b>Scanarr</b><span class="dim">${esc(a.scanarr.version)}</span>${!u.available&&u.latest?'<span class="ok" style="font-size:12px">✓ up to date</span>':''}${u.error?`<span class="dim" style="font-size:12px">· update check: ${esc(u.error)}</span>`:''}</div>
+    <div class="dim" style="font-size:12px;margin-top:4px">Library: ${(a.library.files??'–').toLocaleString()} videos indexed · change tracking ${a.events.active?'on':'off ('+esc(a.events.reason)+')'}</div>
+    ${a.setup?`<div style="margin-top:8px"><b style="font-size:12px">Setup</b> ${a.setup.done?'<span class="ok" style="font-size:12px">✓ complete</span>':'<span class="warn" style="font-size:12px">⏳ still finishing - retries by itself</span>'}${rep}</div>`:''}</div>
+  <div class="card"><div class="ct"><b>Open on your phone</b></div><div style="display:flex;gap:16px;align-items:center;margin-top:8px;flex-wrap:wrap">
+    <div id="appqr" style="background:#fff;padding:8px;border-radius:6px;line-height:0"></div>
+    <div class="dim" style="font-size:12px">${local?'You opened Scanarr as <b>localhost</b>, which only works on this machine. Open it with this computer\'s network address (e.g. http://192.168.1.20:'+esc(location.port)+') and the code here will work on your phone.':`Scan with the camera (same Wi-Fi): <b>${esc(url)}</b><br>Then browser menu → <i>Add to Home screen</i> for an app icon.`}</div></div></div>`;
+  if(!local&&typeof qrcode!=='undefined'){const g=qrcode(0,'M');g.addData(url);g.make();$('#appqr').innerHTML=g.createSvgTag({cellSize:4,margin:0})}else $('#appqr').hidden=true;
+  $('#upbadge').hidden=!u.available;drawSide()}
+async function doUpdate(v){if(!confirm(`Update Scanarr to ${v}? Downloads continue in qBittorrent; Scanarr is unavailable for a minute.`))return;
+  try{await api('/api/update',{method:'POST',body:JSON.stringify({version:v})})}catch(e){toast(e.message,'bad');return}
+  const ic={run:'◌',ok:'✓',error:'✕'};let gone=0;
+  const tick=async()=>{let st;try{st=await api('/api/update/status')}catch{gone++;$('#upjob').innerHTML='<div class="dim">Restarting Scanarr…</div>';if(gone<90)return setTimeout(tick,3000)}
+    const j=st.job||{};$('#upjob').innerHTML=(j.steps||[]).map(s=>`<div style="font-size:12px" class="${s.status==='error'?'bad':s.status==='ok'?'ok':''}">${ic[s.status]||'◌'} ${esc(s.name)} ${s.detail?'· '+esc(s.detail):''}</div>`).join('');
+    if(j.running||gone)setTimeout(()=>{gone=0;tick()},3000);else if(j.ok){toast('Updated - reloading','ok');setTimeout(()=>location.reload(),2500)}else toast('Update failed - still on the old version','bad')};
+  setTimeout(tick,2000)}
+api('/api/apps').then(a=>{APPS=a;$('#upbadge').hidden=!a.update.available}).catch(()=>{});
+
 /* ---------- status bar ---------- */
 const dot=ok=>ok===null||ok===undefined?'○':ok?'●':'✕';
 function setQb(ok,d){$('#st-qb').textContent=`${dot(ok)} qBittorrent`;$('#st-qb').className='s'+(ok?'':' sbad');
@@ -793,13 +845,25 @@ async function pollHealth(force){try{const h=await api('/api/health'+(force?'?t=
   $('#st-pr').textContent=`${dot(h.prowlarr.ok)} Prowlarr · ${h.prowlarr.msg}`;$('#st-pr').title=h.prowlarr.names.join(', ')||h.prowlarr.msg;$('#st-pr').className='s'+(h.prowlarr.ok?'':' sbad');
   const low=(h.min_free_gb||0)*1024**3;
   $('#st-disk').innerHTML=h.disk?Object.entries(h.disk).map(([k,v])=>`<span class="${v<low*1.5?'sbadt':''}">${k==='temp'?'Temp':'Completed'} ${size(v)} free</span>`).join(' · '):'';
-  $('#st-disk').title=h.folders?`Completed: ${h.folders.completed}\nTemp: ${h.folders.temp||'—'}`:'';
+  const pg=h.progress||{};
+  $('#st-disk').title=(h.folders?`Completed: ${h.folders.completed}\nTemp: ${h.folders.temp||'—'}`:'')+
+    (pg.library_files!=null?`\nLibrary: ${pg.library_files.toLocaleString()} videos indexed`:'')+
+    (pg.events?`\nChange tracking: ${pg.events.active?'on - '+pg.events.reason:'scans ('+pg.events.reason+')'}`:'');
   $('#st-subs').textContent=`${dot(h.subs.ok)} Subtitles · ${h.subs.msg}`+(h.subs_pending?` · ${h.subs_pending} retrying`:'');
   $('#st-subs').className='s'+(h.subs.ok===false?' sbad':'');
-  setRvBadge(h.reviews);$('#wbadge').hidden=!h.watch_hits;$('#wbadge').textContent=h.watch_hits;
+  showJob(h.progress);setRvBadge(h.reviews);$('#wbadge').hidden=!h.watch_hits;$('#wbadge').textContent=h.watch_hits;
   if(h.schedule&&!h.schedule.renaming_now){$('#st-rv').hidden=false;$('#st-rv').textContent=(h.reviews?`⚠ ${h.reviews} review · `:'')+`⏸ renaming from ${h.schedule.window.start}`}
   $('#status').classList.toggle('off',!h.qbit?.ok);
   if(h.worker?.last_error)$('#st-qb').title='Last problem: '+h.worker.last_error}catch{}}
+let jobTimer=null;
+function showJob(p){const el=$('#st-job');p=p||{};
+  if(p.job&&!p.waiting){const n=p.done||0,pct=p.total?Math.floor(n*100/p.total):null;
+    el.hidden=false;el.textContent=`⟳ ${p.job} · `+(p.total?`${n.toLocaleString()} of ${p.total.toLocaleString()} (${pct}%)`:`${n.toLocaleString()} files`);
+    el.title=(p.item?'Now: '+p.item+'\n':'')+'Runs part by part - new downloads are still handled in between.';
+    clearTimeout(jobTimer);jobTimer=setTimeout(pollJob,3000)}
+  else if(p.waiting){el.hidden=false;el.textContent=`⟳ Unsorted: ${p.left.toLocaleString()} left`;el.title='Continues automatically in a few seconds (next round).';clearTimeout(jobTimer);jobTimer=setTimeout(pollJob,10000)}
+  else{el.hidden=true;clearTimeout(jobTimer);jobTimer=null}}
+async function pollJob(){try{showJob(await api('/api/progress'))}catch{}}
 async function pollStatus(){if(view==='downloads')return;try{const d=await api('/api/downloads');D.rows=d.torrents;setQb(true,d);renderDl()}catch{setQb(false)}}
 $('#st-rv').onclick=()=>show('review');
 $('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});location.href='/login'};

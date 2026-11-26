@@ -5,14 +5,16 @@ import copy
 import logging
 import os
 import time
+
+import httpx
 from contextlib import asynccontextmanager
 
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import activity, auth, config, folders, indexers, naming, processor, watch
+from . import activity, auth, config, folders, indexers, naming, processor, proxy, watch
 from .qbit import QBit, QBitError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -129,6 +131,32 @@ def _cfg_with_folders():
     except folders.FoldersUnavailable as e:
         raise HTTPException(502, str(e))
     return cfg
+
+
+# ---------------- single sign-on gateway to qBittorrent / Prowlarr ----------------
+_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+
+@app.api_route("/qbit", methods=_METHODS, include_in_schema=False)
+@app.api_route("/qbit/{path:path}", methods=_METHODS, include_in_schema=False)
+async def qbit_gateway(request: Request, path: str = ""):
+    return await proxy.http_proxy("qbit", request, path)
+
+
+@app.api_route("/prowlarr", methods=_METHODS, include_in_schema=False)
+@app.api_route("/prowlarr/{path:path}", methods=_METHODS, include_in_schema=False)
+async def prowlarr_gateway(request: Request, path: str = ""):
+    return await proxy.http_proxy("prowlarr", request, path)
+
+
+@app.websocket("/prowlarr/{path:path}")
+async def prowlarr_ws(ws: WebSocket, path: str):
+    await proxy.ws_proxy("prowlarr", ws, path)
+
+
+@app.websocket("/qbit/{path:path}")
+async def qbit_ws(ws: WebSocket, path: str):
+    await proxy.ws_proxy("qbit", ws, path)
 
 
 # ---------------- pages & login ----------------
@@ -537,6 +565,83 @@ def sub_replace(rid: int, payload: dict = Body(...)):
         osub.close()
 
 
+@app.get("/api/setup-status")
+def setup_status():
+    """For the setup wizard's final check (and the Apps panel): has the first-start wiring finished?"""
+    from . import bootstrap
+    st = config.load().get("stack") or {}
+    return {"managed": bool(st.get("managed")), "done": bool(st.get("bootstrap_done")), "report": bootstrap.report()}
+
+
+@app.get("/api/apps")
+async def apps(request: Request):
+    """Apps panel: qBittorrent/Prowlarr (opened through Scanarr), Jellyfin, versions, setup report, updates."""
+    from . import bootstrap, fswatch, updates
+    from .version import __version__
+    cfg = config.load()
+    st = cfg.get("stack") or {}
+    host = request.url.hostname or "localhost"
+    tg = proxy.targets(cfg) if st.get("managed") else {}
+
+    def qbit_part():
+        qb = _qb()
+        try:
+            v, tr = qb.version(), qb.transfer()
+            return {"ok": True, "version": v, "connection": tr.get("connection_status"), "dht": tr.get("dht_nodes")}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)[:120]}
+        finally:
+            qb.close()
+
+    async def prowlarr_part():
+        p = cfg["prowlarr"]
+        if not p.get("api_key"):
+            return {"ok": False, "msg": "not set up"}
+        try:
+            async with httpx.AsyncClient(timeout=8) as c:
+                r = await c.get(p["url"].rstrip("/") + "/api/v1/system/status", headers={"X-Api-Key": p["api_key"]})
+                r.raise_for_status()
+                return {"ok": True, "version": r.json().get("version")}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)[:120]}
+
+    q, pr = await asyncio.gather(asyncio.to_thread(qbit_part), prowlarr_part())
+    out = {
+        "scanarr": {"version": __version__, "managed": bool(st.get("managed"))},
+        "qbit": {**q, "open": "/qbit/" if "qbit" in tg else None, "torrent_port": st.get("torrent_port")},
+        "prowlarr": {**pr, "open": "/prowlarr/" if "prowlarr" in tg else None},
+        "jellyfin": ({"open": f"{request.url.scheme}://{host}:{st.get('jellyfin_port') or 8096}/"} if st.get("jellyfin") else None),
+        "setup": {"done": bool(st.get("bootstrap_done")), "report": bootstrap.report()} if st.get("managed") else None,
+        "update": await asyncio.to_thread(updates.info),
+        "library": activity.kv_json("library_stats") or {},
+        "events": {"active": fswatch.STATE["active"], "reason": fswatch.STATE["reason"]},
+    }
+    return out
+
+
+@app.post("/api/update")
+def update_start(body: dict = Body(...)):
+    from . import updates
+    v = str(body.get("version") or "").lstrip("v")
+    try:
+        return updates.start(v)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"updater not reachable: {e}")
+
+
+@app.get("/api/update/status")
+def update_status():
+    from . import updates
+    try:
+        return updates.status()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except httpx.HTTPError:
+        return {"job": {"running": True, "steps": [{"name": "Restarting", "status": "run", "detail": "Scanarr is being replaced…"}]}}
+
+
 @app.get("/api/activity")
 def get_activity():
     return activity.recent()
@@ -553,12 +658,28 @@ _health_cache = {"ts": 0, "val": None}
 _disk_cache = {"ts": 0, "key": None, "val": None}  # free-space checks every 10 min, not every poll
 
 
+def _progress():
+    p = dict(processor.PROGRESS)
+    u = activity.kv_json("unsorted_progress") or {}
+    if not p and u.get("left"):
+        p = {"job": "Sorting Unsorted", "waiting": True, "left": u["left"]}
+    lib = activity.kv_json("library_stats") or {}
+    from . import fswatch
+    return {**p, "library_files": lib.get("files"), "library_ts": lib.get("ts"),
+            "events": {"active": fswatch.STATE["active"], "reason": fswatch.STATE["reason"]}}
+
+
+@app.get("/api/progress")
+def progress():
+    return _progress()
+
+
 @app.get("/api/health")
 async def health():
     if time.time() - _health_cache["ts"] < 20 and _health_cache["val"]:
         return _health_cache["val"]
     cfg = config.load()
-    out = {"worker": _status, "reviews": len(activity.reviews()), "subs_pending": activity.pending_subs_count(),
+    out = {"worker": _status, "progress": _progress(), "reviews": len(activity.reviews()), "subs_pending": activity.pending_subs_count(),
            "watch_hits": sum(len(w["hits"]) for w in activity.watches())}
     # Prowlarr
     try:

@@ -12,6 +12,8 @@ import base64
 import hashlib
 import json
 import os
+
+from .version import __version__
 import re
 import secrets
 import string
@@ -52,7 +54,8 @@ DEFAULTS = {
     "tailscale": False,
     "tailscale_authkey": "",
     "subnet": SUBNET,
-    "version": "latest",
+    "updater": True,                 # allow "Update" from inside Scanarr (small helper with Docker access)
+    "version": __version__,          # the stack uses the same version as the wizard that made it
 }
 
 
@@ -142,6 +145,10 @@ def prowlarr_xml(api_key):
 """
 
 
+# settings the wizard sets on every Repair (only if you entered them there)
+WIZARD_OWNED = ("subtitle_languages", "tmdb_api_key", "opensubtitles", "ntfy_url")
+
+
 def scanarr_settings(a, qbit_key, prowlarr_key):
     return {
         "prowlarr": {"url": f"http://prowlarr:{PROWLARR_PORT}/prowlarr", "api_key": prowlarr_key},
@@ -154,11 +161,13 @@ def scanarr_settings(a, qbit_key, prowlarr_key):
         "stack": {"managed": True, "upload_kbps": a.get("upload_kbps", 50),
                   "indexers": a.get("indexers") or [], "bootstrap_done": False,
                   "jellyfin": bool(a.get("jellyfin")), "jellyfin_port": a.get("jellyfin_port"),
-                  "scanarr_port": a.get("scanarr_port"), "torrent_port": a.get("torrent_port")},
+                  "scanarr_port": a.get("scanarr_port"), "torrent_port": a.get("torrent_port"),
+                  "wizard_values": {"subtitle_languages": a.get("languages") or ["en"], "tmdb_api_key": a.get("tmdb_api_key", ""),
+                                    "opensubtitles": a.get("opensubtitles") or {}, "ntfy_url": a.get("ntfy_url", "")}},
     }
 
 
-def init_from_env(root="/config-root", env=None):
+def init_from_env(root="/config-root", env=None, data="/data"):
     """Runs once in the `init` container before qBittorrent and Prowlarr start.
     Writes their settings only if they don't exist yet (never overwrites your changes)."""
     env = env if env is not None else os.environ
@@ -169,7 +178,7 @@ def init_from_env(root="/config-root", env=None):
     sconf = os.path.join(root, "scanarr", "settings.json")
     qkey = env.get("SCANARR_QBIT_KEY") or ("qbt_" + random_key(28))
     pkey = env.get("SCANARR_PROWLARR_KEY") or random_key(32, "0123456789abcdef")
-    for d in (os.path.dirname(qconf), os.path.dirname(pconf), os.path.dirname(sconf), "/data/temp", "/data/completed"):
+    for d in (os.path.dirname(qconf), os.path.dirname(pconf), os.path.dirname(sconf), os.path.join(data, "temp"), os.path.join(data, "completed")):
         os.makedirs(d, exist_ok=True)
     if not os.path.exists(qconf):
         _write(qconf, qbit_conf(a, qkey))
@@ -184,29 +193,69 @@ def init_from_env(root="/config-root", env=None):
         m = re.search(r"<ApiKey>([^<]+)</ApiKey>", open(pconf, encoding="utf-8").read())
         pkey = m.group(1) if m else pkey
         report.append("Prowlarr settings already exist - kept")
+    fresh = scanarr_settings(a, qkey, pkey)
     if not os.path.exists(sconf):
-        _write(sconf, json.dumps(scanarr_settings(a, qkey, pkey), indent=2))
+        _write(sconf, json.dumps(fresh, indent=2))
         report.append("Scanarr settings written")
     else:
-        report.append("Scanarr settings already exist - kept")
+        # Repair / changed answers in the wizard: apply what the wizard owns, keep everything else you set
+        try:
+            cur = json.load(open(sconf, encoding="utf-8"))
+        except (OSError, ValueError):
+            cur = {}
+            os.replace(sconf, sconf + ".broken")
+            report.append("Scanarr settings were unreadable - saved as settings.json.broken and rewritten")
+        before = (cur.get("stack") or {}).get("wizard_values") or {}
+        for k in WIZARD_OWNED:   # only what you changed in the wizard; changes made in Scanarr stay
+            if k in fresh and fresh[k] != before.get(k, cur.get(k)):
+                cur[k] = fresh[k]
+        for k in ("prowlarr", "qbit"):   # keep the connection right (keys may have been regenerated)
+            cur[k] = fresh[k]
+        cur["stack"] = {**fresh["stack"], "rev": random_key(8)}
+        cur["stack"]["wizard_values"] = {k: fresh[k] for k in WIZARD_OWNED if k in fresh}   # new rev: Scanarr re-applies qBit/Prowlarr setup
+        _write(sconf, json.dumps(cur, indent=2))
+        report.append("Scanarr settings updated from the wizard (your other settings kept)")
     # make sure every app can write its folders
     uid, gid = int(a["puid"]), int(a["pgid"])
     for d in (os.path.join(root, "qbittorrent"), os.path.join(root, "prowlarr"), os.path.join(root, "scanarr")):
         _chown_tree(d, uid, gid)
-    for d in ("/data/temp", "/data/completed"):
+    for d in (os.path.join(data, "temp"), os.path.join(data, "completed")):
+        if not _writable_as(d, uid, gid):
+            # only change the owner when the apps couldn't write otherwise (never touches existing ACLs needlessly)
+            try:
+                os.chown(d, uid, gid)
+                report.append(f"{d}: owner set to {uid}:{gid} so the apps can write")
+            except OSError:
+                pass
+        if not _writable_as(d, uid, gid):
+            raise SystemExit(f"ERROR: {d} is not writable for user {uid}:{gid}. Fix the folder permissions "
+                             f"or run the setup wizard again and change the file owner.")
+        report.append(f"{d} is writable for {uid}:{gid}")
+    return report
+
+
+def _writable_as(d, uid, gid):
+    """Can user uid:gid create a file in d? Tested for real in a child process running as that user."""
+    if os.name != "posix":
+        return os.access(d, os.W_OK)
+    pid = os.fork()
+    if pid == 0:
+        code = 1
         try:
-            os.chown(d, uid, gid)
-        except OSError:
-            pass
-        probe = os.path.join(d, ".scanarr-write-test")
-        try:
+            if os.getuid() == 0:
+                os.setgroups([])
+                os.setgid(gid)
+                os.setuid(uid)
+            probe = os.path.join(d, f".scanarr-write-test-{os.getpid()}")
             with open(probe, "w") as f:
                 f.write("ok")
             os.remove(probe)
-            report.append(f"{d} is writable")
-        except OSError as e:
-            raise SystemExit(f"ERROR: {d} is not writable ({e}). Check the folder and PUID/PGID.")
-    return report
+            code = 0
+        except BaseException:
+            pass
+        os._exit(code)
+    _, status = os.waitpid(pid, 0)
+    return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
 def _read_qbit_key(path):
@@ -251,6 +300,14 @@ def answers_from_env(env):
     a["opensubtitles"] = {"api_key": env.get("SCANARR_OSUB_KEY", ""), "username": env.get("SCANARR_OSUB_USER", ""),
                           "password": env.get("SCANARR_OSUB_PASS", "")}
     a["jellyfin"] = env.get("SCANARR_JELLYFIN") == "1"
+    a["updater"] = env.get("SCANARR_UPDATER", "1") == "1"
+    a["tailscale"] = env.get("SCANARR_TAILSCALE") == "1"
+    a["tailscale_authkey"] = env.get("SCANARR_TS_KEY", "")
+    for k in ("puid", "pgid", "torrent_port", "scanarr_port", "jellyfin_port", "upload_kbps"):
+        try:
+            a[k] = int(a[k])
+        except (TypeError, ValueError, KeyError):
+            pass
     return a
 
 
@@ -264,6 +321,7 @@ def compose(a):
     a = {**DEFAULTS, **a}
     if not a.get("torrent_port"):
         a["torrent_port"] = 50000 + secrets.randbelow(10000)
+    token = a.get("agent_token") or random_key(40)
     cfg, temp, done = a["config"].rstrip("/\\"), a["temp"].rstrip("/\\"), a["completed"].rstrip("/\\")
     j = lambda *p: "/".join([cfg.replace("\\", "/")] + list(p))
     img = f"{IMAGE}:{a.get('version') or 'latest'}"
@@ -277,6 +335,8 @@ def compose(a):
         "SCANARR_OSUB_PASS": a["opensubtitles"].get("password", ""), "SCANARR_NTFY_URL": a.get("ntfy_url", ""),
         "SCANARR_PUBLIC_PORT": a["scanarr_port"], "SCANARR_JELLYFIN": "1" if a.get("jellyfin") else "0",
         "SCANARR_JELLYFIN_PORT": a.get("jellyfin_port", 8096),
+        "SCANARR_UPDATER": "1" if a.get("updater") else "0",
+        "SCANARR_TAILSCALE": "1" if a.get("tailscale") else "0", "SCANARR_TS_KEY": a.get("tailscale_authkey", ""),
     }
     data_vols = [f"      - {_q(temp + ':/data/temp')}", f"      - {_q(done + ':/data/completed')}"]
     lines = [
@@ -345,6 +405,9 @@ def compose(a):
         "    environment:",
         f"      TZ: {_q(a['tz'])}",
         "      CONFIG_DIR: \"/config\"",
+        f"      SCANARR_USERNAME: {_q(a['username'])}   # change here + redeploy to reset the login (synced to qBittorrent)",
+        f"      SCANARR_PASSWORD: {_q(a['password'])}",
+    ] + ([f"      SCANARR_AGENT_TOKEN: {_q(token)}", "      SCANARR_AGENT_URL: \"http://updater:9701\""] if a.get("updater") else []) + [
         "    ports:",
         f"      - \"{a['scanarr_port']}:9797\"",
         "    volumes:",
@@ -353,6 +416,24 @@ def compose(a):
         "    networks: [scanarr]",
         "    restart: unless-stopped",
     ]
+    if a.get("updater"):
+        sock = "/var/run/docker.sock"   # same path on Linux, NAS and Docker Desktop (Windows/Mac)
+        lines += [
+            "",
+            "  updater:   # optional: lets the Update button in Scanarr install new versions (no ports, token-protected)",
+            f"    image: {img}",
+            "    container_name: scanarr-updater",
+            "    command: [\"agent\"]",
+            "    user: \"0:0\"",
+            "    environment:",
+            f"      SCANARR_AGENT_TOKEN: {_q(token)}",
+            "      COMPOSE_FILE: \"/stack/compose.yml\"",
+            "    volumes:",
+            f"      - {_q(sock + ':/var/run/docker.sock')}",
+            f"      - {_q(j('stack') + ':/stack')}",
+            "    networks: [scanarr]",
+            "    restart: unless-stopped",
+        ]
     if a.get("jellyfin"):
         lines += [
             "",

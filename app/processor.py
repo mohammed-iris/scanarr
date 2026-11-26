@@ -6,13 +6,14 @@ Flow: qBittorrent downloads into TEMP, moves finished files to COMPLETED, then S
   - other types: already in their folder; torrent is removed so nothing seeds.
 Also: fake-file guard, dead-torrent cleanup, subtitle retries, and an "Unsorted" drop folder.
 """
+import json
 import logging
 import os
 import re
 import shutil
 import time
 
-from . import activity, config, folders, naming
+from . import fswatch, activity, config, folders, naming
 from .qbit import QBit
 from .subtitles import OpenSubtitles, os_hash
 
@@ -27,6 +28,20 @@ DANGEROUS_EXT = {".exe", ".scr", ".lnk", ".bat", ".cmd", ".com", ".pif", ".msi",
                  ".js", ".jse", ".wsf", ".ps1", ".hta", ".jar", ".apk", ".dll"}
 MIN_VIDEO = 50 * 1024 * 1024  # smaller videos are samples/extras
 STABLE_SECONDS = 120          # files in Unsorted must be untouched this long
+BATCH_ITEMS = 25              # big catch-ups run part by part so new downloads never wait long
+BATCH_SECONDS = 120
+
+# what the worker is busy with right now (shown in the status bar)
+PROGRESS = {}
+_more = {"unsorted": False}
+
+
+def set_progress(job=None, done=0, total=None, item=""):
+    if job is None:
+        PROGRESS.clear()
+    else:
+        PROGRESS.update(job=job, done=done, total=total, item=item,
+                        started=PROGRESS.get("started") if PROGRESS.get("job") == job else time.time())
 LANG_TOKENS = {
     "en": {"en", "eng", "english"}, "ml": {"ml", "mal", "malayalam"},
     "ta": {"ta", "tam", "tamil"}, "hi": {"hi", "hin", "hindi"},
@@ -539,11 +554,8 @@ def kindlabel(k):
 
 
 # ---------------------------------------------------------------- Unsorted drop folder
-def unsorted_pass(osub, tmdb, cfg):
-    root = config.kind_dir(cfg, "unsorted")
-    if not os.path.isdir(root):
-        return 0
-    done, now = 0, time.time()
+def _unsorted_candidates(root, now):
+    out = []
     for dirpath, _dirs, names in os.walk(root):
         for n in names:
             p = os.path.join(dirpath, n)
@@ -551,25 +563,55 @@ def unsorted_pass(osub, tmdb, cfg):
                 st = os.stat(p)
             except OSError:
                 continue
-            if not is_video(n, st.st_size) or now - st.st_mtime < STABLE_SECONDS or activity.review_exists_for(p):
-                continue
-            kind = "tv" if re.search(r"S\d{1,2}E\d{1,3}|\d{1,2}x\d{2}", n, re.I) else "movies"
-            rel = os.path.relpath(p, root).replace(os.sep, "/")
-            try:
-                items = plan_videos(os.path.splitext(n)[0], [{"name": rel, "size": st.st_size}], kind, cfg, tmdb)
-                for it in items:
-                    it["src"] = p
-                execute(items, n, cfg, osub)
-                _cleanup_empty(dirpath, stop_at=root)
-                done += 1
-            except NeedsReview as e:
-                items = e.args[1] if len(e.args) > 1 else []
-                for it in items:
-                    it["src"] = p
-                if not items:
-                    continue
+            if is_video(n, st.st_size) and now - st.st_mtime >= STABLE_SECONDS:
+                out.append((p, n, st.st_size))
+    out.sort()
+    return out
+
+
+def unsorted_pass(osub, tmdb, cfg):
+    """Sort what's in the Unsorted folder, at most BATCH_ITEMS files / BATCH_SECONDS per run.
+    A 16 TB catch-up therefore runs part by part: downloads keep being handled in between,
+    and the status bar shows how far it is."""
+    _more["unsorted"] = False
+    root = config.kind_dir(cfg, "unsorted")
+    if not os.path.isdir(root):
+        return 0
+    start = time.time()
+    todo = [c for c in _unsorted_candidates(root, start) if not activity.review_exists_for(c[0])]
+    if not todo:
+        return 0
+    total, done, tried = len(todo), 0, 0
+    for i, (p, n, size) in enumerate(todo):
+        if i >= BATCH_ITEMS or time.time() - start > BATCH_SECONDS:
+            _more["unsorted"] = True
+            break
+        tried = i + 1
+        set_progress("Sorting Unsorted", i, total, n)
+        kind = "tv" if re.search(r"S\d{1,2}E\d{1,3}|\d{1,2}x\d{2}", n, re.I) else "movies"
+        rel = os.path.relpath(p, root).replace(os.sep, "/")
+        try:
+            items = plan_videos(os.path.splitext(n)[0], [{"name": rel, "size": size}], kind, cfg, tmdb)
+            for it in items:
+                it["src"] = p
+            execute(items, n, cfg, osub)
+            _cleanup_empty(os.path.dirname(p), stop_at=root)
+            done += 1
+        except NeedsReview as e:
+            items = e.args[1] if len(e.args) > 1 else []
+            for it in items:
+                it["src"] = p
+            if items:
                 activity.add_review(n, "", kind, e.args[0], items)
                 activity.log(n, "review", "", e.args[0])
+        except Exception as e:  # one bad file must not stop the rest
+            log.warning("couldn't sort %s: %s", p, e)
+            activity.log(n, "error", "", f"Unsorted: {e}"[:200])
+    left = total - tried
+    if left:
+        log.info("Unsorted: %d sorted this round, %d left - continuing next round", done, left)
+    activity.kv_set_json("unsorted_progress", {"left": left, "ts": time.time()})
+    set_progress()
     return done
 
 
@@ -622,26 +664,197 @@ def subs_deliver_pass():
         activity.drop_sub(s_["id"])
 
 
-def library_scan(cfg):
-    """Refresh the SSD index of Movies/TV (used for 'already in library'). Only runs while the HDD is awake."""
-    paths = []
-    for k in config.VIDEO_KINDS:
-        root = config.kind_dir(cfg, k)
-        for dirpath, _d, names in os.walk(root):
-            paths += [os.path.join(dirpath, n) for n in names if is_video(n)]
-    activity.library_replace(paths)
+def _walk_videos(root, cache=None, fresh=None):
+    """Walk a folder tree for videos. With a cache (folder -> modified time, files, subfolders),
+    folders that haven't changed since the last scan aren't re-read - only their time is checked."""
+    stack, now = [root], time.time()
+    while stack:
+        d = stack.pop()
+        try:
+            mt = os.stat(d).st_mtime_ns
+        except OSError:
+            continue
+        c = cache.get(d) if cache is not None else None
+        # trust the cache only if the folder was last listed well after it changed (coarse clocks on exFAT/SMB)
+        if c and c[0] == mt and c[1] > mt / 1e9 + 2:
+            files, subs, seen = c[2], c[3], c[1]
+        else:
+            files, subs, seen = [], [], now
+            try:
+                with os.scandir(d) as it:
+                    for e in it:
+                        try:
+                            if e.is_dir(follow_symlinks=False):
+                                if not e.name.startswith((".", "@")):   # skip .Trash, @eaDir (NAS thumbnails) etc.
+                                    subs.append(e.name)
+                            elif is_video(e.name):
+                                files.append(e.name)
+                        except OSError:
+                            continue
+            except OSError as ex:
+                log.info("library index: can't read %s: %s", d, ex)
+                continue
+        if fresh is not None:
+            fresh[d] = (mt, seen, files, subs)
+        for n in files:
+            yield os.path.join(d, n)
+        stack += [os.path.join(d, n) for n in subs]
+
+
+def library_scan(cfg, full=False):
+    """Refresh the SSD index of Movies/TV (used for 'already in library'). Only runs while the HDD is awake.
+    Unchanged folders are skipped unless full=True."""
+    paths, fresh = [], {}
+    cache = {} if full else activity.dircache_all()
+    set_progress("Indexing library", 0, None, "")
+    try:
+        for k in config.VIDEO_KINDS:
+            for p in _walk_videos(config.kind_dir(cfg, k), cache, fresh):
+                paths.append(p)
+                if len(paths) % 500 == 0:
+                    set_progress("Indexing library", len(paths), None, os.path.basename(os.path.dirname(p)))
+        activity.library_replace(paths)
+        activity.dircache_replace(fresh)
+        activity.kv_set_json("library_stats", {"files": len(paths), "folders": len(fresh), "ts": time.time(),
+                                               "full": bool(full or not cache)})
+    finally:
+        set_progress()
+
+
+# ---------------------------------------------------------------- file change events (Linux / NAS)
+_events = {"unsorted_dirty": False, "last": 0.0, "roots": {}}
+
+
+def _on_change(kind, p):
+    if kind == "overflow":                      # too many changes at once: rescan next time the HDD is awake
+        activity.kv_set("library_scan_day", "")
+        return
+    r = _events["roots"]
+    norm = os.path.normcase(p)
+    if r.get("unsorted") and (norm + os.sep).startswith(os.path.normcase(r["unsorted"]) + os.sep):
+        if kind in ("add", "dir"):              # ignore our own clean-up of Unsorted
+            _events.update(unsorted_dirty=True, last=time.time())
+        return
+    if kind == "add":
+        if is_video(os.path.basename(p)):
+            activity.library_add(p)
+    elif kind == "remove":
+        if is_video(os.path.basename(p)):
+            activity.library_remove(p)
+    elif kind == "rmdir":
+        activity.library_remove_under(p)
+    elif kind == "dir":                         # a whole folder moved in
+        for v in _walk_videos(p):
+            activity.library_add(v)
+
+
+def start_watching(cfg):
+    """Called while the HDD is awake. Returns True if change events are active."""
+    roots = {k: config.kind_dir(cfg, k) for k in (*config.VIDEO_KINDS, "unsorted")}
+    for d in roots.values():
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            pass
+    _events["roots"] = roots
+    return fswatch.ensure(list(roots.values()), _on_change)
+
+
+def unsorted_due(now=None):
+    """Something landed in Unsorted (reported by the kernel) and has been quiet long enough."""
+    now = now or time.time()
+    return _events["unsorted_dirty"] and now - _events["last"] >= STABLE_SECONDS + 5
 
 
 def awake_housekeeping(osub, tmdb, cfg):
     """Everything that needs the HDD but isn't urgent. Runs only when the HDD is already spinning
     (a download just finished), on "Check now", or at the daily time if you chose that."""
+    watching = start_watching(cfg)
+    _events["unsorted_dirty"] = False
     done = unsorted_pass(osub, tmdb, cfg)
     subs_deliver_pass()
     today = time.strftime("%Y-%m-%d")
+    last_full = (activity.kv_json("library_stats") or {}).get("ts", 0)
     if activity.kv_get("library_scan_day") != today:
-        library_scan(cfg)
+        # with change events the index keeps itself current: a full check once a week is enough
+        if not watching or time.time() - last_full > 7 * 86400 or not activity.kv_get("library_scan_day"):
+            library_scan(cfg)
         activity.kv_set("library_scan_day", today)
     return done
+
+
+# ---------------------------------------------------------------- disk-full guard
+DISKFULL_TAG = "scanarr-diskfull"
+ACTIVE_DL = {"downloading", "stalledDL", "metaDL", "forcedDL", "queuedDL", "checkingDL", "allocating", "forcedMetaDL"}
+
+
+def disk_guard_pass(qb, cfg, torrents):
+    """Pause downloads before a disk fills up (a full disk corrupts downloads and can upset the NAS),
+    resume them by themselves once there's room again. Never reads the HDD: qBittorrent reports
+    Completed's free space, Temp is checked directly (SSD)."""
+    limit = float(cfg.get("disk_guard_gb") or 0) * 1024 ** 3
+    if limit <= 0:
+        return None
+    free = {}
+    try:
+        free["Completed"] = qb.free_space()
+    except Exception:
+        pass
+    t = (cfg.get("folders") or {}).get("temp")
+    if t:
+        try:
+            free["Temp"] = free_bytes(t)
+        except OSError:
+            pass
+    free = {k: v for k, v in free.items() if isinstance(v, (int, float))}
+    if not free:
+        return None
+    low = [k for k, v in free.items() if v < limit]
+    paused = [x for x in torrents if DISKFULL_TAG in (x.get("tags") or "").split(", ")]
+    if low:
+        todo = [x["hash"] for x in torrents if x.get("state") in ACTIVE_DL and x not in paused]
+        if todo:
+            qb.control("stop", todo)
+            for h in todo:
+                qb.add_tag(h, DISKFULL_TAG)
+            names = " and ".join(low)
+            msg = f"{len(todo)} download(s) paused: less than {limit / 1024**3:g} GB free in {names}. They resume by themselves when there's room."
+            activity.log("Disk almost full", "paused", "", msg)
+            from . import watch
+            watch.notify(cfg, "Scanarr: disk almost full", msg, tags="warning")
+        return low
+    if paused and all(v > limit + 5 * 1024 ** 3 for v in free.values()):   # 5 GB margin: no on/off flapping
+        hs = [x["hash"] for x in paused]
+        qb.control("start", hs)
+        for h in hs:
+            qb.remove_tag(h, DISKFULL_TAG)
+        activity.log("Disk space OK again", "resumed", "", f"{len(hs)} download(s) resumed")
+    return []
+
+
+# ---------------------------------------------------------------- speed schedule (qBittorrent's own scheduler)
+def speed_schedule_prefs(cfg):
+    sc = cfg.get("speed_schedule") or {}
+    a, b = _mins(sc.get("start")), _mins(sc.get("end"))
+    if not sc.get("enabled") or a is None or b is None:
+        return {"scheduler_enabled": False}
+    return {"scheduler_enabled": True,
+            "schedule_from_hour": a // 60, "schedule_from_min": a % 60,
+            "schedule_to_hour": b // 60, "schedule_to_min": b % 60,
+            "scheduler_days": {"all": 0, "weekdays": 1, "weekends": 2}.get(sc.get("days"), 0),
+            "alt_dl_limit": max(int(float(sc.get("dl_kbps") or 0) * 1024), 0),
+            "alt_up_limit": max(int(float(sc.get("up_kbps") or 0) * 1024), 1024)}
+
+
+def apply_speed_schedule(qb, cfg):
+    """Push the schedule to qBittorrent when it changed (one cheap API call, then nothing)."""
+    prefs = speed_schedule_prefs(cfg)
+    fp = json.dumps(prefs, sort_keys=True)
+    if activity.kv_get("speed_schedule_fp") == fp:
+        return False
+    qb.set_preferences(prefs)
+    activity.kv_set("speed_schedule_fp", fp)
+    return True
 
 
 # ---------------------------------------------------------------- main loop body
@@ -696,17 +909,30 @@ def run_once(cfg, manual=False):
     try:
         qb = QBit.from_cfg(cfg["qbit"])
         try:
+            try:
+                from . import bootstrap
+                bootstrap.run(cfg)               # stacks made by the setup wizard: wire everything up (retries until done)
+            except Exception as e:
+                log.warning("setup step will retry: %s", e)
             folders.attach(cfg, qb)              # qBit API
             rev = {v: k for k, v in cfg["categories"].items()}
             torrents = qb.list()                 # qBit API - fetched once, shared by every pass
+            try:
+                apply_speed_schedule(qb, cfg)
+                disk_guard_pass(qb, cfg, torrents)
+            except Exception as e:
+                log.warning("disk guard / speed schedule: %s", e)
             removed = guard_pass(qb, cfg, rev, torrents)
             dead_pass(qb, cfg, rev, torrents, removed)
             peek_cleanup(qb, torrents, removed)
             subs_search_pass(osub, cfg)          # internet + SSD
             if manual or in_window(cfg):
                 done += completed_pass(qb, osub, tmdb, cfg, rev, torrents, removed)  # HDD only if something finished
+            if unsorted_due() and not manual and in_window(cfg):   # dropped into Unsorted: HDD is awake now
+                _events["unsorted_dirty"] = False
+                done += unsorted_pass(osub, tmdb, cfg)
             mode = cfg.get("housekeeping", "awake")
-            if manual or (mode != "off" and done > 0):
+            if manual or (mode != "off" and (done > 0 or _more["unsorted"])):
                 done += awake_housekeeping(osub, tmdb, cfg)        # HDD is awake right now anyway
             elif mode == "daily" and housekeeping_due(cfg):
                 done += awake_housekeeping(osub, tmdb, cfg)

@@ -277,3 +277,132 @@ def test_send_uses_qbit_paths(monkeypatch):
     c.post("/api/login", json={"username": a["username"], "password": a["password"]})
     assert c.post("/api/send", json={"download": "magnet:x", "kind": "movies"}).status_code == 200
     assert sent == {"savepath": "C:\\Scanarr\\completed\\Incoming", "temp": "C:\\Scanarr\\temp"}
+
+
+# big catch-ups run part by part and report progress
+def test_unsorted_runs_in_batches(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(processor, "BATCH_ITEMS", 5)
+    qb = Q(tmp_path, [], {})
+    cfg = folders.attach(config.load(), qb)
+    for i in range(12):
+        f = tmp_path / f"completed/Unsorted/Some Movie {1990 + i} 1080p.mkv"
+        mk(f, 80 * MB)
+        os.utime(f, (time.time() - 600,) * 2)
+    done = processor.unsorted_pass(NoSubs(), NoTMDb(), cfg)
+    assert done + len(activity.reviews()) == 5
+    assert processor._more["unsorted"] and activity.kv_json("unsorted_progress")["left"] == 7
+    processor.unsorted_pass(NoSubs(), NoTMDb(), cfg)
+    processor.unsorted_pass(NoSubs(), NoTMDb(), cfg)
+    assert not processor._more["unsorted"] and activity.kv_json("unsorted_progress")["left"] == 0
+    assert processor.PROGRESS == {}
+
+
+def test_library_index_scale(tmp_path):
+    """~16 TB worth of files: 3,000 movies + 20,000 episodes."""
+    import time
+    qb = Q(tmp_path, [], {})
+    cfg = folders.attach(config.load(), qb)
+    mv, tv = tmp_path / "completed/Movies", tmp_path / "completed/TV"
+    for i in range(3000):
+        d = mv / f"Film {i} (2001)"
+        d.mkdir(parents=True)
+        (d / f"Film {i} (2001).mkv").touch()
+        (d / f"Film {i} (2001).en.srt").touch()
+    for s in range(200):
+        d = tv / f"Show {s}" / "Season 01"
+        d.mkdir(parents=True)
+        for e in range(100):
+            (d / f"Show {s} S01E{e:02d}.mkv").touch()
+    (mv / "@eaDir").mkdir()
+    (mv / "@eaDir" / "thumb.mkv").touch()
+    t = time.time()
+    processor.library_scan(cfg)
+    took = time.time() - t
+    assert activity.kv_json("library_stats")["files"] == 23000
+    t = time.time()
+    for i in range(200):
+        assert activity.library_find(str(mv / f"Film {i} (2001)"))
+    assert time.time() - t < 1
+    assert activity.library_find(str(mv / "Not There (1999)")) is None
+    assert took < 30, took
+
+
+def _wait(cond, t=3.0):
+    import time
+    end = time.time() + t
+    while time.time() < end:
+        if cond():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_change_events_keep_index_current(tmp_path):
+    from app import fswatch
+    qb = Q(tmp_path, [], {})
+    cfg = folders.attach(config.load(), qb)
+    try:
+        assert processor.start_watching(cfg), fswatch.STATE
+        mv = tmp_path / "completed/Movies"
+        d = mv / "Alien (1979)"
+        d.mkdir()
+        (d / "Alien (1979).mkv").write_bytes(b"x")
+        assert _wait(lambda: activity.library_find(str(d)))
+        (d / "Alien (1979).mkv").unlink()
+        assert _wait(lambda: activity.library_find(str(d)) is None)
+        # a whole folder moved in from elsewhere
+        src = tmp_path / "elsewhere/Heat (1995)"
+        src.mkdir(parents=True)
+        (src / "Heat (1995).mp4").write_bytes(b"x")
+        os.rename(src, mv / "Heat (1995)")
+        assert _wait(lambda: activity.library_find(str(mv / "Heat (1995)")))
+        # a removed folder takes its files out of the index
+        import shutil
+        shutil.rmtree(mv / "Heat (1995)")
+        assert _wait(lambda: activity.library_find(str(mv / "Heat (1995)")) is None)
+        # something dropped into Unsorted is noticed (but waits until it's been quiet a while)
+        (tmp_path / "completed/Unsorted/x.mkv").write_bytes(b"x")
+        assert _wait(lambda: processor._events["unsorted_dirty"])
+        assert not processor.unsorted_due()
+        import time
+        assert processor.unsorted_due(time.time() + processor.STABLE_SECONDS + 10)
+    finally:
+        fswatch.stop()
+        processor._events["unsorted_dirty"] = False
+
+
+def test_unreliable_shares_fall_back_to_scans(monkeypatch, tmp_path):
+    from app import fswatch
+    monkeypatch.setattr(fswatch, "fs_type", lambda p: "9p")
+    ok, why = fswatch.usable(str(tmp_path))
+    assert not ok and "scans" in why
+    assert fswatch.ensure([str(tmp_path)], lambda *a: None) is False and not fswatch.STATE["active"]
+
+
+def test_rescan_skips_unchanged_folders(tmp_path, monkeypatch):
+    import time
+    qb = Q(tmp_path, [], {})
+    cfg = folders.attach(config.load(), qb)
+    mv = tmp_path / "completed/Movies"
+    for i in range(50):
+        d = mv / f"Film {i} (2001)"
+        d.mkdir(parents=True)
+        (d / f"Film {i} (2001).mkv").touch()
+    old = time.time() - 3600
+    for d in [mv, *mv.iterdir()]:
+        os.utime(d, (old, old))
+    processor.library_scan(cfg)
+    calls = []
+    real = os.scandir
+    monkeypatch.setattr(processor.os, "scandir", lambda p: (calls.append(p), real(p))[1])
+    processor.library_scan(cfg)
+    assert activity.kv_json("library_stats")["files"] == 50
+    assert all(not str(c).startswith(str(mv)) for c in calls), calls   # nothing in Movies re-read
+    # a changed folder is re-read
+    (mv / "Film 3 (2001)" / "Film 3 (2001) extra.mkv").touch()
+    os.utime(mv / "Film 3 (2001)", (old + 10, old + 10))
+    calls.clear()
+    processor.library_scan(cfg)
+    assert [c for c in calls if str(c).startswith(str(mv))] == [str(mv / "Film 3 (2001)")]
+    assert activity.kv_json("library_stats")["files"] == 51

@@ -45,10 +45,13 @@ DEFAULTS = {
     "subtitle_retry_days": 7,
     "auto_remove": True,       # remove finished torrents from qBit (no seeding)
     "min_free_gb": 2,          # refuse downloads that would leave less than this free
+    "disk_guard_gb": 10,       # pause downloads when Temp or Completed has less than this free (0 = off)
+    # slower downloads during these hours (qBittorrent's own scheduler; e.g. keep the internet free in the evening)
+    "speed_schedule": {"enabled": False, "start": "18:00", "end": "23:59", "days": "all", "dl_kbps": 500, "up_kbps": 20},
     "dead_hours": 6,           # no progress for this long = dead
     "dead_action": "flag",     # flag | remove
     "guard": True,
-    "process_external": True,  # also rename/clean up torrents added directly in qBittorrent (no category)             # block .exe/.scr/.lnk etc. inside movie/TV torrents
+    "process_external": True,  # also rename/clean up torrents added directly in qBittorrent (no category)
     "poll_seconds": 30,        # how often qBit's API is checked (API only, no disk access)
     # HDD-friendly schedule
     "rename_mode": "immediate",      # immediate | window

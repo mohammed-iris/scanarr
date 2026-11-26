@@ -1,56 +1,19 @@
-# Scanarr + qBittorrent + Prowlarr for the UGREEN DXP2800
+# Starts the Scanarr SETUP WIZARD. Paste this into your Docker UI as a Project/Stack (UGREEN: Docker ->
+# Project -> Create), or run `docker compose up -d` here. Then open http://<this-machine>:9700
 #
-# Two main folders (Scanarr reads them from qBittorrent's settings):
-#   Temp      = unfinished downloads -> SSD volume
-#   Completed = finished files       -> HDD volume (Movies/, TV/, Audio/ … are created inside)
-# Both containers mount them at the SAME paths, so Scanarr sees exactly what qBit sees.
-# Change /volume1 (HDD) and /volume2 (SSD) to match your storage pools.
-# Set PUID/PGID to your NAS user's ids (run `id` over SSH).
-
+# The wizard asks for your folders, login and ports, checks everything, and installs
+# Scanarr + qBittorrent + Prowlarr already connected to each other. You can remove the wizard
+# afterwards (button on its last page) and start it again any time to change settings, update or uninstall.
+#
+# It needs the Docker socket to create the containers. Nothing else gets it, except the optional
+# updater you can switch on in the wizard.
 services:
-  scanarr:
-    build:
-      context: .
-      args: { PUID: "1000", PGID: "10" }
-    container_name: scanarr
-    ports: ["8787:8787"]   # web UI: change the LEFT number to use another port, e.g. "8899:8787"
-    environment:
-      - TZ=Asia/Dubai
-      # optional: fix the login instead of using the generated one
-      # - SCANARR_USERNAME=admin
-      # - SCANARR_PASSWORD=change-me
+  setup:
+    image: ghcr.io/mohammed-iris/scanarr:latest
+    container_name: scanarr-setup
+    command: ["setup"]
+    user: "0:0"
+    ports: ["9700:9700"]
     volumes:
-      - /volume2/docker/scanarr:/config          # SSD: settings + database, so Scanarr never wakes the HDD by itself
-      - /volume2/scanarr/temp:/data/temp
-      - /volume1/media:/data/completed
-    restart: unless-stopped
-
-  qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    environment:
-      - PUID=1000
-      - PGID=10
-      - TZ=Asia/Dubai
-      - WEBUI_PORT=9090
-    ports:
-      - "9090:9090"
-      - "6881:6881"
-      - "6881:6881/udp"
-    volumes:
-      - /volume2/docker/qbittorrent:/config      # SSD
-      - /volume2/scanarr/temp:/data/temp
-      - /volume1/media:/data/completed
-    restart: unless-stopped
-
-  prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    environment:
-      - PUID=1000
-      - PGID=10
-      - TZ=Asia/Dubai
-    ports: ["9696:9696"]
-    volumes:
-      - /volume2/docker/prowlarr:/config         # SSD
-    restart: unless-stopped
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: "no"

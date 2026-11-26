@@ -7,50 +7,23 @@ One search box for every indexer in Prowlarr: movies, TV, music, software, books
 - **Everything else** lands in its own folder with the original name: `Audio/`, `Books/`, `Software/`, `Games/`, `XXX/`, `Other/`
 - **No seeding.** Finished torrents are removed from qBittorrent and the files are kept.
 
-## How the folders work
+## Install
 
-You set **two folders in qBittorrent** (Options → Downloads), and Scanarr reads them from there:
+Install Docker, start the setup wizard, answer its questions. That's it. Same steps on Windows, Linux and a UGREEN NAS: **[INSTALL.md](INSTALL.md)**.
 
-| qBittorrent setting | Scanarr calls it | Put it on |
-|---|---|---|
-| Use another path for incomplete torrents | **Temp** | SSD |
-| Default Save Path | **Completed** | HDD |
+The wizard sets up Scanarr, qBittorrent and Prowlarr connected to each other, with:
+one login for all three, qBittorrent's and Prowlarr's pages opened through Scanarr (no ports of their own), folders set, low upload while downloading and no seeding afterwards, your indexers added.
 
 ```
-Temp/                         <- qBit downloads here
-Completed/                    <- qBit moves finished files here, then Scanarr renames them
+Temp/                         <- unfinished downloads (SSD)
+Completed/                    <- finished files (HDD); Scanarr renames them here
   Incoming/                   <- raw movie/TV downloads waiting to be renamed
   Movies/  TV/                <- clean names + subtitles
   Audio/ Books/ Software/ Games/ XXX/ Other/
   Unsorted/                   <- drop files here by hand; Scanarr renames them too
 ```
 
-Renaming is a move inside Completed, so it's instant, and only one copy exists: the old name is gone everywhere. To switch from local test folders to the NAS, change the two paths in qBittorrent. Scanarr needs no change.
-
-Recommended qBittorrent settings: **Default Torrent Management Mode = Manual**, **"Use Category paths in Manual Mode" unticked**. Scanarr sets the folder for each torrent it sends.
-
-> **Docker:** step-by-step container instructions for your laptop (Docker Desktop) and the UGREEN NAS are in **[DOCKER.md](DOCKER.md)**.
-
-## Test on your Windows laptop (no NAS needed)
-
-1. Make two folders, e.g. `C:\Scanarr\temp` and `C:\Scanarr\completed`.
-2. In qBittorrent → Options → Downloads, set **Default Save Path** to `C:\Scanarr\completed`, tick **Use another path for incomplete torrents**, and set it to `C:\Scanarr\temp`.
-3. In qBittorrent → Options → Web UI, enable the Web UI (your port is 9090) and **generate an API key**.
-4. Install Python 3.11+ from python.org (tick "Add python.exe to PATH").
-5. Unzip Scanarr and double-click **`run-windows.bat`**. The first run installs what it needs, then opens `http://localhost:8787`.
-6. The login is printed in the Scanarr window. Then go to **Settings**:
-   - **Prowlarr:** `http://localhost:9696` + API key, then **Test & sync indexers**
-   - **qBittorrent:** `http://localhost:9090` + API key, then **Test connection**. Your two folders should appear under *Folders & Renaming*.
-   - **TMDb** key and **OpenSubtitles** key, username and password (both free)
-
-## Install on the UGREEN DXP2800
-
-1. Edit `docker-compose.yml`: set the SSD path for Temp and the HDD path for Completed (e.g. `/volume2/...` and `/volume1/media`), plus your PUID/PGID (`id` over SSH).
-2. Run `docker compose up -d --build`, or paste the file into a Project in UGREEN's Docker app.
-3. qBittorrent (`http://NAS-IP:9090`): the temporary password is in `docker logs qbittorrent`. Set **Default Save Path** = `/data/completed` and incomplete = `/data/temp`, then generate the API key.
-4. Prowlarr (`http://NAS-IP:9696`): add your indexers.
-5. Scanarr (`http://NAS-IP:8787`): get the login from `docker logs scanarr`. Use `http://prowlarr:9696` and `http://qbittorrent:9090` in Settings.
-6. Share the Completed folder to the TV over SMB or DLNA.
+Renaming is a move inside Completed, so it's instant, and only one copy exists.
 
 ## Keeping the HDD asleep
 
@@ -73,7 +46,9 @@ Scanarr wakes the HDD only when it has to. Here's every case where it could, and
 
 If something finished in qBit but its files aren't on disk, Scanarr checks a few times with growing gaps (1 min → 1 h) and then lists it under *Needs review*, instead of checking the disk forever.
 
-Keep every app's `/config` folder on the **SSD**, as in the compose file. If you add Jellyfin later, turn off its real-time library monitoring and schedule library scans, or it will wake the HDD itself.
+Keep the Config folder on the **SSD** (the wizard recommends it). If you use Jellyfin, turn off its real-time library monitoring and schedule library scans, or it will wake the HDD itself.
+
+**Big libraries (8-16 TB):** Scanarr keeps an index of your Movies/TV on the SSD. On a NAS (Linux) it follows file changes as they happen, so it rarely rescans; elsewhere, rescans only re-read folders that changed. A large `Unsorted/` catch-up runs in batches with progress in the status bar, and new downloads are still handled in between.
 
 ## Extras
 
@@ -84,6 +59,9 @@ Keep every app's `/config` folder on the **SSD**, as in the compose file. If you
 - **Command palette:** Ctrl+Shift+P or Ctrl+K.
 - **Backup:** Settings → Backup downloads one file with settings and history, and restores from it.
 - **Indexer health:** response time and success rate per indexer. Failing ones are skipped for 30 min, and you can "Retry now".
+- **Apps:** open qBittorrent and Prowlarr (no extra login), see versions, whether your torrent port is reachable, update notices with **Update now**, and a QR code to open Scanarr on your phone.
+- **Disk-full guard:** downloads pause before Temp or Completed fills up, and resume by themselves when there's room.
+- **Slower downloads during set hours:** e.g. keep the internet free in the evening (Settings → Schedule).
 - **Watchlist:** search, set filters, then **☆ Watch this search**. It's re-checked every 12 h (internet only). New releases appear under Watchlist and, if you set an **ntfy** URL, on your phone. Nothing downloads by itself.
 
 ## Using it
@@ -110,10 +88,15 @@ Keep every app's `/config` folder on the **SSD**, as in the compose file. If you
 
 **Torrents added directly in qBittorrent** are handled too (switchable in Settings). Movies and episodes are detected from the file name and renamed. Anything else is left where qBit saved it, and the torrent is removed so it stops seeding.
 
+## Releases
+
+Push a tag `vX.Y.Z` matching `app/version.py`: GitHub Actions runs the tests, builds the image for Intel/AMD and ARM, publishes `ghcr.io/mohammed-iris/scanarr:X.Y.Z` and `:latest`, and creates a release. Each release pins the qBittorrent and Prowlarr versions it was tested with (`app/stack.py`), and updates move to those together.
+
 ## Development
 
 ```
 pip install -r requirements.txt pytest
-CONFIG_DIR=./config uvicorn app.main:app --reload --port 8787
+CONFIG_DIR=./config python -m app serve      # Scanarr on :9797
+python -m app setup                           # setup wizard on :9700 (needs Docker)
 pytest -q
 ```

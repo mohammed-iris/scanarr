@@ -3,7 +3,7 @@ title Scanarr
 cd /d "%~dp0"
 
 rem ---- change the web UI port here ----
-set SCANARR_PORT=8787
+set SCANARR_PORT=9797
 
 where python >nul 2>nul
 if errorlevel 1 (

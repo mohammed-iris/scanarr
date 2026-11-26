@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scanarr setup</title>
+<link rel="icon" href="/static/icon-192.png">
+<script src="/static/qrcode.js"></script>
+<style>
+:root{--bg:#1e1e1e;--side:#252526;--line:#2b2b2b;--line2:#3c3c3c;--text:#cccccc;--dim:#8b8b8b;--bright:#e7e7e7;--acc:#0078d4;--acc2:#2489db;
+  --ok:#89d185;--bad:#f48771;--warn:#cca700;--input:#313131;--mono:ui-monospace,"Cascadia Code",Consolas,monospace}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+#app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+aside{background:var(--side);border-right:1px solid var(--line);padding:18px 0}
+aside h1{font-size:15px;color:var(--bright);margin:0 20px 4px;display:flex;align-items:center;gap:8px}
+aside .sub{color:var(--dim);font-size:12px;margin:0 20px 18px}
+.stepl{padding:7px 20px;display:flex;gap:10px;align-items:center;color:var(--dim);cursor:pointer}
+.stepl .n{width:20px;height:20px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;font-size:11px}
+.stepl.on{color:var(--bright);background:#04395e;outline:1px solid var(--acc);outline-offset:-1px}
+.stepl.done .n{background:#388a34;border-color:#388a34;color:#fff}
+.stepl.lock{opacity:.45;cursor:default}
+main{padding:28px 36px 90px;max-width:900px}
+h2{font-size:22px;font-weight:400;color:var(--bright);margin:0 0 6px}
+.lead{color:var(--dim);margin:0 0 22px;max-width:720px}
+.f{margin:0 0 20px;padding:12px 14px;border-left:2px solid transparent;border-radius:2px}
+.f:hover{background:#2a2d2e55}
+.f.ok{border-left-color:#388a34}.f.warn{border-left-color:var(--warn)}.f.error{border-left-color:var(--bad)}
+.f label{display:block;font-weight:600;color:var(--bright);margin-bottom:2px}
+.rec{color:var(--dim);font-size:12px;margin-bottom:6px}.rec b{color:#4ec9b0;font-weight:500}
+input,select{font:inherit;color:var(--text);background:var(--input);border:1px solid var(--line2);border-radius:2px;padding:6px 9px;outline:none}
+input:focus,select:focus{border-color:var(--acc)}
+input[type=text],input[type=password],input[type=number],input[type=url]{width:100%;max-width:520px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.msg{font-size:12px;margin-top:6px}.msg div::before{margin-right:6px}
+.msg.ok{color:var(--ok)}.msg.warn{color:var(--warn)}.msg.error{color:var(--bad)}
+.msg.ok div::before{content:"✓"}.msg.warn div::before{content:"⚠"}.msg.error div::before{content:"✕"}.msg.info{color:var(--dim)}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:2px;padding:7px 16px;cursor:pointer;font:inherit}
+.btn:hover{background:var(--acc2)}.btn:disabled{opacity:.45;cursor:default}
+.btn.sec{background:#3a3d41;color:var(--text)}.btn.sec:hover{background:#45494e}.btn.danger{background:#a1260d}
+.btn.sm{padding:4px 10px;font-size:12px}
+.nav{position:fixed;left:250px;right:0;bottom:0;background:var(--side);border-top:1px solid var(--line);padding:12px 36px;display:flex;gap:10px;align-items:center}
+.nav .grow{flex:1}
+.chk{display:grid;grid-template-columns:22px 160px 1fr;gap:6px;align-items:center;padding:5px 0}
+.chk .w{color:var(--dim);font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1px solid var(--line2);border-radius:12px;padding:2px 10px;cursor:pointer;user-select:none}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+table.sum{border-collapse:collapse;width:100%;max-width:760px}table.sum td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.sum td:first-child{color:var(--dim);width:200px}table.sum td.m{font-family:var(--mono);font-size:12px;word-break:break-all}
+.card{background:var(--side);border:1px solid var(--line2);border-radius:6px;padding:14px 16px;margin-bottom:14px}
+.steps .s{display:flex;gap:10px;padding:6px 0;align-items:flex-start}.steps .ic{width:18px;text-align:center}
+.steps .run .ic{color:var(--acc2)}.steps .ok .ic{color:var(--ok)}.steps .error .ic{color:var(--bad)}.steps .warn .ic{color:var(--warn)}
+pre{background:#111;border:1px solid var(--line2);padding:12px;overflow:auto;max-height:360px;font:12px/1.5 var(--mono)}
+.tag{font-size:11px;border:1px solid var(--line2);border-radius:3px;padding:0 5px;color:var(--dim)}
+.banner{background:#04395e;border:1px solid var(--acc);border-radius:4px;padding:10px 12px;margin-bottom:16px}
+.banner.warn{background:#3a2f00;border-color:#6b5600}
+.pw{display:flex;gap:6px;max-width:520px}.pw input{flex:1}
+.meter{height:4px;background:#333;border-radius:2px;max-width:520px;margin-top:6px}.meter i{display:block;height:4px;border-radius:2px}
+.hidden{display:none!important}
+a{color:var(--acc2)}
+@media (max-width:820px){#app{grid-template-columns:1fr}aside{display:none}.nav{left:0;padding:10px 14px}main{padding:18px 14px 90px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1><img src="/static/icon-192.png" width="20" height="20" alt="">Scanarr setup</h1>
+    <div class="sub" id="platsub">Checking Docker…</div>
+    <div id="steplist"></div>
+  </aside>
+  <main id="main"><div class="lead">Loading…</div></main>
+</div>
+<div class="nav"><button class="btn sec" id="back">Back</button><span class="grow" id="navmsg"></span><button class="btn" id="next">Next</button></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const api=async(p,b)=>{const r=await fetch(p,b===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  const t=await r.text();let d;try{d=JSON.parse(t)}catch{d=t}if(!r.ok)throw new Error(d.detail||d||r.statusText);return d};
+let ENV=null, step=0, mode='install';
+const A={};             // answers
+const V={};             // validation status per field: ok|warn|error
+const INFO={};          // folder check info (dev ids, owners)
+const STEPS=[['welcome','Welcome'],['folders','Folders'],['login','Login'],['ports','Ports'],['sources','Indexers & subtitles'],['extras','Extras'],['review','Review'],['install','Install']];
+
+function msg(el,res){el.className='msg '+(res.status||'info');el.innerHTML=(res.messages||[]).map(m=>`<div>${esc(m)}</div>`).join('')}
+function setV(k,res,fieldEl){V[k]=res.status;if(fieldEl){fieldEl.classList.remove('ok','warn','error');fieldEl.classList.add(res.status)}}
+const debounce=(fn,ms=500)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}};
+
+async function boot(){
+  ENV=await api('/api/env');
+  const p=ENV.platform, kindName={windows:'Windows (Docker Desktop)',desktop:'Docker Desktop',nas:'NAS (Linux)',linux:'Linux',unknown:'Unknown'}[p.kind];
+  $('#platsub').innerHTML=ENV.docker?`${esc(kindName)}${p.ugreen?' · UGREEN':''} · ${esc(p.arch||'')}<br>Docker ${esc(p.docker||'')}`:'<span style="color:#cca700">No Docker access (manual mode)</span>';
+  Object.assign(A,ENV.defaults,{temp:ENV.suggest.temp,completed:ENV.suggest.completed,config:ENV.suggest.config,
+    tz:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',subnet:ENV.subnet,
+    indexers:ENV.indexers.filter(i=>i.default).map(i=>i.id),languages:['en'],opensubtitles:{api_key:'',username:'',password:''}});
+  const s=await api('/api/suggest');A.torrent_port=s.torrent_port;A._topic=s.topic;
+  render()}
+
+function stepList(){$('#steplist').innerHTML=STEPS.map(([id,l],i)=>`<div class="stepl ${i===step?'on':''} ${i<step?'done':''} ${i>step+0&&!canJump(i)?'lock':''}" onclick="jump(${i})"><span class="n">${i<step?'✓':i+1}</span>${l}</div>`).join('')}
+function canJump(i){return i<=step||(i<STEPS.length-1&&i<=maxStep)}
+let maxStep=0;function jump(i){if(canJump(i)&&STEPS[step][0]!=='install'){step=i;render()}}
+
+function render(){
+  stepList();const id=STEPS[step][0];$('#back').hidden=step===0||id==='install';$('#next').hidden=false;$('#next').disabled=false;$('#navmsg').textContent='';
+  $('#next').textContent=id==='review'?(ENV.docker?(mode==='repair'?'Apply changes':'Install'):'Show compose file'):'Next';
+  VIEWS[id]();window.scrollTo(0,0)}
+
+/* ---------------- views ---------------- */
+const VIEWS={
+welcome(){
+  const ex=ENV.existing,p=ENV.platform;
+  $('#main').innerHTML=`<h2>Set up Scanarr</h2><p class="lead">This wizard installs <b>Scanarr</b>, <b>qBittorrent</b> and <b>Prowlarr</b> as Docker containers, connects them to each other and tests everything. It works the same on Windows, Linux and a NAS. Every value has a recommendation and is checked before anything is installed.</p>
+  ${ENV.docker?`<div class="banner">✓ Docker access works - the wizard can check folders and ports, install, and test. Detected: <b>${esc(p.os)}</b>.</div>`
+   :`<div class="banner warn">⚠ This wizard has no Docker access (your Docker UI may not allow it). You can still fill everything in; at the end you get <b>one compose file</b> to paste into your Docker UI (Project / Stack → Create).</div>`}
+  ${ex?`<div class="card"><b>Scanarr is already installed here</b> (${ex.containers.length} containers: ${ex.containers.map(c=>esc(c.service)+' '+esc(c.state)).join(', ')}).<br><br>
+    <div class="row"><button class="btn" onclick="startRepair()">Change settings / repair</button><button class="btn sec" onclick="startUpdate()">Update to the latest version</button><button class="btn sec danger" onclick="showUninstall()">Uninstall…</button></div>
+    <div id="unbox"></div></div>`:''}
+  <div class="card"><b>What you'll need</b><ul style="margin:6px 0 0;padding-left:18px">
+    <li>Where to keep unfinished downloads (fast disk / SSD), finished files (big disk) and app settings</li>
+    <li>A username and password - one login for all three apps (or let the wizard generate one)</li>
+    <li>Optional: a free TMDb key (better names) and OpenSubtitles account (subtitles) - can be added later</li></ul></div>`;
+  if(ex){$('#next').textContent='Fresh install instead';}
+},
+folders(){
+  const kind=ENV.platform.kind, win=kind==='windows'||kind==='desktop';
+  const F=[['temp','Temp - unfinished downloads',win?'A folder on your fastest drive.':'<b>SSD recommended</b>: downloads are written here bit by bit; keeping this off the HDD lets the HDD sleep.'],
+    ['completed','Completed - finished files',win?'Where Movies/, TV/, Audio/… will appear.':'<b>HDD recommended</b> (your big disk). Share this folder to your TV.'],
+    ['config','Config - app settings',win?'Small; next to the other two is fine.':'<b>SSD recommended</b> - so the apps never wake the HDD.']];
+  $('#main').innerHTML=`<h2>Folders</h2><p class="lead">Three folders. ${win?'Use full Windows paths like <code>C:\\Scanarr\\temp</code>.':'Use full paths like <code>/volume1/media</code>. On UGREEN: check volume numbers in Storage Manager - volume1 is usually the first pool you created.'} Folders that don't exist are created.</p>`+
+   F.map(([k,l,r])=>`<div class="f" id="f_${k}"><label>${l}</label><div class="rec">Recommended: <b>${esc(ENV.suggest[k])}</b> · ${r}</div>
+     <div class="row"><input type="text" id="i_${k}" value="${esc(A[k])}" spellcheck="false"><button class="btn sec sm" onclick="checkFolder('${k}')">Check</button></div><div class="msg" id="m_${k}"></div></div>`).join('')+
+   `<div class="f"><label>File owner (advanced)</label><div class="rec">Files Scanarr renames will belong to this user. <b>Read automatically from your Completed folder</b> - change only if you know you need to.</div>
+     <div class="row">User ID <input type="number" id="i_puid" value="${A.puid}" style="width:110px">Group ID <input type="number" id="i_pgid" value="${A.pgid}" style="width:110px"></div></div>`;
+  for(const [k] of F){const i=$('#i_'+k);i.oninput=debounce(()=>{A[k]=i.value.trim();checkFolder(k)},900);if(V[k]===undefined)checkFolder(k);else if(LAST[k])show(k)}
+  $('#i_puid').oninput=e=>A.puid=+e.target.value||1000;$('#i_pgid').oninput=e=>A.pgid=+e.target.value||1000;
+},
+login(){
+  $('#main').innerHTML=`<h2>Login</h2><p class="lead">One login for Scanarr - which is also your door to qBittorrent and Prowlarr. Forgot it later? It's printed in the Scanarr container's log at every start.</p>
+   <div class="f" id="f_user"><label>Username</label><div class="rec">Recommended: something other than <b>admin</b>.</div><input type="text" id="i_user" value="${esc(A.username)}" autocomplete="off" spellcheck="false"><div class="msg" id="m_user"></div></div>
+   <div class="f" id="f_pass"><label>Password</label><div class="rec">Recommended: <b>let the wizard generate one</b> (strong and readable). At least 10 characters.</div>
+     <div class="pw"><input type="password" id="i_pass" value="${esc(A.password)}" autocomplete="new-password"><button class="btn sec sm" id="showpw">Show</button><button class="btn sec sm" id="genpw">Generate</button></div>
+     <div class="meter"><i id="meter"></i></div><div class="msg" id="m_pass"></div></div>
+   <div class="f" id="f_pass2"><label>Confirm password</label><input type="password" id="i_pass2" value="${esc(A._pass2||A.password)}" autocomplete="new-password"><div class="msg" id="m_pass2"></div></div>`;
+  const chk=debounce(async()=>{A.username=$('#i_user').value.trim();A.password=$('#i_pass').value;A._pass2=$('#i_pass2').value;
+    const r=await api('/api/check/login',{username:A.username,password:A.password});
+    const userErr=r.messages.filter(m=>m.startsWith('Username')),passMsgs=r.messages.filter(m=>!m.startsWith('Username'));
+    const ru={status:userErr.length?'error':'ok',messages:userErr.length?userErr:['OK']};msg($('#m_user'),ru);setV('user',ru,$('#f_user'));
+    const rp={status:passMsgs.some(m=>/at least|must|repetitive/.test(m))?'error':r.status==='error'&&!userErr.length?'error':r.status,messages:passMsgs};
+    if(!A.password)Object.assign(rp,{status:'error',messages:['Enter or generate a password.']});
+    msg($('#m_pass'),rp);setV('pass',rp,$('#f_pass'));
+    $('#meter').style.width=(r.score*25)+'%';$('#meter').style.background=['#f48771','#f48771','#cca700','#89d185','#89d185'][r.score];
+    const r2=A._pass2===A.password&&A.password?{status:'ok',messages:['Matches.']}:{status:'error',messages:['Passwords don\'t match.']};msg($('#m_pass2'),r2);setV('pass2',r2,$('#f_pass2'))},300);
+  ['#i_user','#i_pass','#i_pass2'].forEach(s=>$(s).oninput=chk);chk();
+  $('#showpw').onclick=()=>{const t=$('#i_pass').type==='password'?'text':'password';$('#i_pass').type=t;$('#i_pass2').type=t;$('#showpw').textContent=t==='text'?'Hide':'Show'};
+  $('#genpw').onclick=async()=>{const s=await api('/api/suggest');$('#i_pass').value=s.password;$('#i_pass2').value=s.password;$('#i_pass').type='text';$('#i_pass2').type='text';$('#showpw').textContent='Hide';chk()};
+},
+ports(){
+  $('#main').innerHTML=`<h2>Ports</h2><p class="lead">Only two ports are opened on this machine. qBittorrent's and Prowlarr's web pages are <b>not</b> opened - you reach them through Scanarr.</p>
+   <div class="f" id="f_sp"><label>Scanarr web page</label><div class="rec">Recommended: <b>9797</b>. You'll open <code>http://${esc(location.hostname)}:<span id="spv">${A.scanarr_port}</span></code></div>
+     <div class="row"><input type="number" id="i_sp" value="${A.scanarr_port}" style="width:140px"><button class="btn sec sm" onclick="checkPort('sp')">Check</button></div><div class="msg" id="m_sp"></div></div>
+   <div class="f" id="f_tp"><label>Torrent traffic (TCP + UDP)</label><div class="rec">Recommended: <b>a random high port</b> (picked for you). For faster downloads, forward this port on your router to this machine - Scanarr shows whether it's reachable.</div>
+     <div class="row"><input type="number" id="i_tp" value="${A.torrent_port}" style="width:140px"><button class="btn sec sm" id="rndport">Random</button><button class="btn sec sm" onclick="checkPort('tp')">Check</button></div><div class="msg" id="m_tp"></div></div>
+   <div class="f"><label>Upload speed while downloading</label><div class="rec">Recommended: <b>50 KB/s</b>. Uploading stops completely once a download finishes. Some upload is required by BitTorrent; very low values make downloads slower.</div>
+     <div class="row"><input type="number" id="i_up" value="${A.upload_kbps}" min="1" style="width:140px"> KB/s</div><div class="msg" id="m_up"></div></div>`;
+  $('#i_sp').oninput=debounce(()=>{A.scanarr_port=+$('#i_sp').value;$('#spv').textContent=A.scanarr_port;checkPort('sp')},700);
+  $('#i_tp').oninput=debounce(()=>{A.torrent_port=+$('#i_tp').value;checkPort('tp')},700);
+  $('#rndport').onclick=async()=>{const s=await api('/api/suggest');$('#i_tp').value=s.torrent_port;A.torrent_port=s.torrent_port;checkPort('tp')};
+  $('#i_up').oninput=()=>{A.upload_kbps=+$('#i_up').value;const v=A.upload_kbps;msg($('#m_up'),v<1?{status:'error',messages:['At least 1 KB/s.']}:v<10?{status:'warn',messages:['Very low - downloads may be slow.']}:v>2000?{status:'warn',messages:['That\'s a lot of upload for "don\'t upload".']}:{status:'ok',messages:['Good.']});V.up=v<1?'error':'ok'};
+  $('#i_up').oninput();checkPort('sp');checkPort('tp')},
+sources(){
+  $('#main').innerHTML=`<h2>Indexers & subtitles</h2><p class="lead">Pick where to search. They're added to Prowlarr automatically and tested after install - you can add more later in Prowlarr (Apps panel in Scanarr).</p>
+   <div class="f" id="f_idx"><label>Indexers</label><div class="rec">Recommended: <b>YTS, The Pirate Bay, Knaben</b> - reliable public sources covering movies, TV and everything else.</div>
+     ${ENV.indexers.map(i=>`<label class="chk" style="font-weight:400"><input type="checkbox" value="${i.id}" ${A.indexers.includes(i.id)?'checked':''} class="idx"><span>${esc(i.name)}</span><span class="w">${esc(i.what)}</span></label>`).join('')}<div class="msg" id="m_idx"></div></div>
+   <div class="f"><label>Subtitle languages</label><div class="rec">Saved next to each movie/episode as <code>Name.en.srt</code>. Recommended: <b>English</b> plus any you watch in.</div>
+     <div class="chips">${ENV.languages.map(([c,n])=>`<span class="chip ${A.languages.includes(c)?'on':''}" data-l="${c}">${n}</span>`).join('')}</div></div>
+   <div class="f" id="f_tmdb"><label>TMDb API key <span class="tag">optional</span></label><div class="rec">Confirms the exact title and year when renaming. Free: <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org → Settings → API</a>. Recommended: <b>add it</b> - fewer items need review.</div>
+     <div class="row"><input type="text" id="i_tmdb" value="${esc(A.tmdb_api_key)}" spellcheck="false"><button class="btn sec sm" id="ctmdb">Test</button></div><div class="msg" id="m_tmdb"></div></div>
+   <div class="f" id="f_os"><label>OpenSubtitles <span class="tag">optional</span></label><div class="rec">Free account at opensubtitles.com, then Profile → API consumers → New consumer for the key. Username/password give you more downloads per day.</div>
+     <div class="row" style="max-width:700px"><input type="text" id="i_osk" placeholder="API key" value="${esc(A.opensubtitles.api_key)}" style="max-width:240px"><input type="text" id="i_osu" placeholder="username" value="${esc(A.opensubtitles.username)}" style="max-width:170px"><input type="password" id="i_osp" placeholder="password" value="${esc(A.opensubtitles.password)}" style="max-width:170px"><button class="btn sec sm" id="cos">Test</button></div><div class="msg" id="m_os"></div></div>`;
+  const idxChk=()=>{A.indexers=$$('.idx').filter(c=>c.checked).map(c=>c.value);const r=A.indexers.length?{status:'ok',messages:[`${A.indexers.length} selected.`]}:{status:'error',messages:['Pick at least one.']};msg($('#m_idx'),r);setV('idx',r,$('#f_idx'))};
+  $$('.idx').forEach(c=>c.onchange=idxChk);idxChk();
+  $$('.chip[data-l]').forEach(c=>c.onclick=()=>{const l=c.dataset.l;A.languages=A.languages.includes(l)?A.languages.filter(x=>x!==l):[...A.languages,l];c.classList.toggle('on');if(!A.languages.length){A.languages=['en'];render()}});
+  $('#i_tmdb').oninput=()=>{A.tmdb_api_key=$('#i_tmdb').value.trim()};
+  $('#ctmdb').onclick=async()=>{msg($('#m_tmdb'),{status:'info',messages:['Testing…']});const r=await api('/api/check/tmdb',{key:A.tmdb_api_key});msg($('#m_tmdb'),r);setV('tmdb',r,$('#f_tmdb'))};
+  const osIn=()=>{A.opensubtitles={api_key:$('#i_osk').value.trim(),username:$('#i_osu').value.trim(),password:$('#i_osp').value}};['#i_osk','#i_osu','#i_osp'].forEach(s=>$(s).oninput=osIn);
+  $('#cos').onclick=async()=>{osIn();msg($('#m_os'),{status:'info',messages:['Testing…']});const r=await api('/api/check/opensubtitles',A.opensubtitles);msg($('#m_os'),r);setV('os',r,$('#f_os'))}},
+extras(){
+  $('#main').innerHTML=`<h2>Extras</h2><p class="lead">All optional.</p>
+   <div class="f" id="f_tz"><label>Time zone</label><div class="rec">Detected from your browser: <b>${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</b>. Used for schedules and log times.</div><input type="text" id="i_tz" value="${esc(A.tz)}" style="max-width:260px"><div class="msg" id="m_tz"></div></div>
+   <div class="f" id="f_ntfy"><label>Phone notifications (ntfy)</label><div class="rec">Install the free <b>ntfy</b> app, then subscribe to the topic below. You'll get: new watchlist releases, items needing review, blocked fakes, disk almost full.</div>
+     <div class="row"><input type="url" id="i_ntfy" value="${esc(A.ntfy_url)}" placeholder="https://ntfy.sh/your-topic" style="max-width:420px"><button class="btn sec sm" id="gentopic">Generate topic</button><button class="btn sec sm" id="cntfy">Send test</button></div><div class="msg" id="m_ntfy"></div></div>
+   <div class="f"><label><input type="checkbox" id="i_upd" ${A.updater!==false?'checked':''}> Allow updates from inside Scanarr</label><div class="rec">Recommended: <b>on</b>. Adds a tiny helper (no ports, password-protected) so the <b>Update</b> button in Scanarr can install new versions - with a backup first and automatic roll-back if something goes wrong. Off: update by running this wizard again.</div></div>
+   <div class="f" id="f_jf"><label><input type="checkbox" id="i_jf" ${A.jellyfin?'checked':''}> Jellyfin media player</label><div class="rec">Watch your library on TV/phone with a nice interface (instead of browsing folders). Set up with HDD-friendly scanning.</div>
+     <div class="row ${A.jellyfin?'':'hidden'}" id="jfrow">Port <input type="number" id="i_jfp" value="${A.jellyfin_port}" style="width:120px"><button class="btn sec sm" onclick="checkPort('jfp')">Check</button></div><div class="msg" id="m_jfp"></div></div>
+   <div class="f" id="f_ts"><label><input type="checkbox" id="i_ts" ${A.tailscale?'checked':''}> Tailscale - private access from anywhere</label><div class="rec">Open Scanarr from outside home without opening router ports. Needs a free Tailscale account: <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener">Admin → Settings → Keys → Generate auth key</a>.</div>
+     <div class="row ${A.tailscale?'':'hidden'}" id="tsrow"><input type="password" id="i_tsk" value="${esc(A.tailscale_authkey)}" placeholder="tskey-auth-…"></div><div class="msg" id="m_ts"></div></div>`;
+  $('#i_tz').oninput=()=>{A.tz=$('#i_tz').value.trim();const ok=/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(A.tz);msg($('#m_tz'),ok?{status:'ok',messages:['OK']}:{status:'error',messages:['Use a name like Asia/Dubai']});V.tz=ok?'ok':'error'};$('#i_tz').oninput();
+  $('#i_ntfy').oninput=()=>{A.ntfy_url=$('#i_ntfy').value.trim()};
+  $('#gentopic').onclick=()=>{$('#i_ntfy').value='https://ntfy.sh/'+A._topic;A.ntfy_url=$('#i_ntfy').value;msg($('#m_ntfy'),{status:'info',messages:['In the ntfy app: + → subscribe to "'+A._topic+'". Then press Send test.']})};
+  $('#cntfy').onclick=async()=>{const r=await api('/api/check/ntfy',{url:A.ntfy_url});msg($('#m_ntfy'),r);V.ntfy=r.status};
+  $('#i_upd').onchange=e=>{A.updater=e.target.checked};
+  $('#i_jf').onchange=e=>{A.jellyfin=e.target.checked;$('#jfrow').classList.toggle('hidden',!A.jellyfin);if(A.jellyfin)checkPort('jfp');else V.jfp='ok'};
+  $('#i_jfp').oninput=debounce(()=>{A.jellyfin_port=+$('#i_jfp').value;checkPort('jfp')},700);
+  $('#i_ts').onchange=e=>{A.tailscale=e.target.checked;$('#tsrow').classList.toggle('hidden',!A.tailscale);tsChk()};
+  const tsChk=()=>{A.tailscale_authkey=$('#i_tsk').value.trim();const r=!A.tailscale?{status:'ok',messages:[]}:A.tailscale_authkey.startsWith('tskey-')?{status:'ok',messages:['Looks right. After install, open http://scanarr:'+A.scanarr_port+' from any device in your Tailscale network.']}:{status:'error',messages:['Paste an auth key starting with tskey-']};msg($('#m_ts'),r);V.ts=r.status};
+  $('#i_tsk').oninput=tsChk;tsChk()},
+review(){
+  const errs=Object.entries(V).filter(([k,v])=>v==='error');
+  const row=(l,v,s)=>`<tr><td>${l}</td><td class="m">${v}</td><td>${s?`<a href="#" onclick="jump(${s});return false">Edit</a>`:''}</td></tr>`;
+  $('#main').innerHTML=`<h2>Review</h2><p class="lead">Check everything, then ${ENV.docker?'install':'get your compose file'}. Nothing has been changed on this machine yet${ENV.docker?' (except creating the empty folders)':''}.</p>
+   ${errs.length?`<div class="banner warn">⚠ Please fix: ${errs.map(([k])=>esc(k)).join(', ')}</div>`:''}
+   <table class="sum">
+    ${row('Temp',esc(A.temp),1)}${row('Completed',esc(A.completed),1)}${row('Config',esc(A.config),1)}${row('File owner',`${A.puid}:${A.pgid}`,1)}
+    ${row('Login',esc(A.username)+' / '+'•'.repeat(Math.min(A.password.length,12)),2)}
+    ${row('Scanarr',`http://${esc(location.hostname)}:${A.scanarr_port}`,3)}${row('Torrent port',A.torrent_port+' (TCP+UDP)',3)}${row('Upload while downloading',A.upload_kbps+' KB/s, none after',3)}
+    ${row('Indexers',esc(A.indexers.join(', ')),4)}${row('Subtitles',esc(A.languages.join(', ')),4)}
+    ${row('TMDb / OpenSubtitles',(A.tmdb_api_key?'TMDb ✓':'TMDb -')+' · '+(A.opensubtitles.api_key?'OpenSubtitles ✓':'OpenSubtitles -'),4)}
+    ${row('Time zone',esc(A.tz),5)}${row('Notifications',A.ntfy_url?esc(A.ntfy_url):'off',5)}
+    ${row('Updates from Scanarr',A.updater!==false?'yes':'no (use this wizard)',5)}${row('Jellyfin',A.jellyfin?'yes, port '+A.jellyfin_port:'no',5)}${row('Tailscale',A.tailscale?'yes':'no',5)}
+   </table><div class="msg" id="m_rev"></div>`;
+  $('#next').disabled=!!errs.length},
+install(){
+  $('#main').innerHTML=`<h2>${ENV.docker?(mode==='repair'?'Applying changes':'Installing'):'Your compose file'}</h2><div id="inst"></div>`;$('#next').hidden=true;$('#back').hidden=!!ENV.docker;
+  ENV.docker?runInstall():showCompose()},
+};
+
+/* ---------------- checks ---------------- */
+const LAST={};
+function show(k){msg($('#m_'+k),LAST[k]);setV(k,LAST[k],$('#f_'+k))}
+async function checkFolder(k){
+  const el=$('#m_'+k);if(!el)return;A[k]=$('#i_'+k).value.trim();msg(el,{status:'info',messages:['Checking…']});
+  const other={};for(const o of ['temp','completed','config'])if(o!==k&&INFO[o])other[o]=INFO[o];
+  try{const r=await api('/api/check/folder',{path:A[k],role:k,kind:ENV.platform.kind,other});LAST[k]=r;INFO[k]=r.info;
+    if($('#m_'+k)){show(k)}
+    if(k==='completed'&&r.info&&r.info.uid!=null&&r.info.uid!==0&&!A._ownerSet){A.puid=r.info.uid;A.pgid=r.info.gid;A._ownerSet=1;if($('#i_puid')){$('#i_puid').value=A.puid;$('#i_pgid').value=A.pgid}}
+    V[k]=r.status}catch(e){LAST[k]={status:'error',messages:[e.message]};show(k)}}
+async function checkPort(k){
+  const map={sp:['scanarr_port','web'],tp:['torrent_port','torrent'],jfp:['jellyfin_port','web']};const [key,purpose]=map[k];const el=$('#m_'+k);if(!el)return;
+  const used=['scanarr_port','torrent_port',...(A.jellyfin?['jellyfin_port']:[])].filter(x=>x!==key).map(x=>+A[x]);
+  if(used.includes(+A[key])){const r={status:'error',messages:['Already used by another field.']};msg(el,r);setV(k,r,$('#f_'+k));return}
+  msg(el,{status:'info',messages:['Checking…']});const r=await api('/api/check/port',{port:A[key],purpose});msg(el,r);setV(k,r,$('#f_'+k))}
+
+/* ---------------- navigation ---------------- */
+function stepErrors(id){
+  const need={folders:['temp','completed','config'],login:['user','pass','pass2'],ports:['sp','tp','up'],sources:['idx'],extras:['tz','ts',...(A.jellyfin?['jfp']:[])]}[id]||[];
+  return need.filter(k=>V[k]==='error'||(V[k]===undefined&&['temp','completed','config','user','pass','pass2','sp','tp'].includes(k)))}
+$('#next').onclick=async()=>{
+  const id=STEPS[step][0];
+  if(id==='welcome'&&ENV.existing&&mode==='install'){if(!confirm('Scanarr is already installed. A fresh install keeps your existing settings files but recreates the containers. Continue?'))return}
+  const bad=stepErrors(id);if(bad.length){
+    const pending=bad.every(k=>V[k]===undefined);
+    $('#navmsg').innerHTML=pending?'<span style="color:#8b8b8b">Still checking… one moment.</span>':'<span style="color:#f48771">Fix the fields marked in red first.</span>';
+    if(pending)setTimeout(()=>{if(STEPS[step][0]===id&&!stepErrors(id).length)$('#next').click()},1500);
+    return}
+  step++;maxStep=Math.max(maxStep,step);render()};
+$('#back').onclick=()=>{if(step>0){step--;render()}};
+
+/* ---------------- repair / update / uninstall ---------------- */
+function startRepair(){Object.assign(A,ENV.prefill||{});A._pass2=A.password;mode='repair';for(const k of ['temp','completed','config'])delete V[k];step=1;maxStep=6;render()}
+async function startUpdate(){Object.assign(A,ENV.prefill||{});A._pass2=A.password;mode='repair';step=7;maxStep=7;render()}
+function showUninstall(){$('#unbox').innerHTML=`<div class="card" style="margin-top:12px;border-color:#a1260d"><b>Uninstall</b><p class="rec">Removes the containers. Your <b>Completed folder (all your movies, TV, files) is never deleted</b>.</p>
+  <label class="chk" style="font-weight:400"><input type="checkbox" id="u_cfg"><span>Also delete app settings</span><span class="w">qBittorrent, Prowlarr and Scanarr settings + history in the Config folder</span></label>
+  <label class="chk" style="font-weight:400"><input type="checkbox" id="u_tmp"><span>Also empty Temp</span><span class="w">unfinished downloads</span></label>
+  <div class="row" style="margin-top:8px">Type <b>UNINSTALL</b>: <input type="text" id="u_conf" style="max-width:160px"><button class="btn danger" id="u_go">Uninstall</button></div><div class="msg" id="u_msg"></div></div>`;
+  $('#u_go').onclick=async()=>{try{const r=await api('/api/uninstall',{confirm:$('#u_conf').value,delete_config:$('#u_cfg').checked,delete_temp:$('#u_tmp').checked});
+    msg($('#u_msg'),{status:'ok',messages:['Removed: '+r.removed.join(', '),r.kept]});ENV.existing=null}catch(e){msg($('#u_msg'),{status:'error',messages:[e.message]})}}}
+
+/* ---------------- install ---------------- */
+function payload(){const p={...A,_kind:ENV.platform.kind,_mode:mode};for(const k of Object.keys(p))if(k.startsWith('_')&&!['_kind','_mode'].includes(k))delete p[k];return p}
+async function runInstall(){
+  try{await api('/api/install',payload())}catch(e){$('#inst').innerHTML=`<div class="banner warn">✕ ${esc(e.message)}</div><button class="btn sec" onclick="step=6;render()">Back to review</button>`;return}
+  const ic={run:'◌',ok:'✓',error:'✕',warn:'⚠'};
+  const poll=async()=>{const j=await api('/api/job');
+    $('#inst').innerHTML=`<div class="steps card">${j.steps.map(s=>`<div class="s ${s.status}"><span class="ic">${ic[s.status]}</span><div><b>${esc(s.name)}</b><div class="rec">${esc(s.detail)}</div></div></div>`).join('')}</div>`+(j.done?finished(j):'');
+    if(!j.done)setTimeout(poll,1500);else if(j.ok!==null)drawQR()};poll()}
+function scanarrURL(){return `http://${location.hostname}:${A.scanarr_port}`}
+function finished(j){
+  if(j.ok===false&&j.result&&j.result.error)return `<div class="banner warn">✕ Install stopped: ${esc(j.result.error)}</div><div class="row"><button class="btn sec" onclick="step=6;render()">Back to review</button></div>`;
+  const rep=(j.result&&j.result.report)||{};
+  return `<div class="card"><h2 style="font-size:18px">${j.ok?'✓ All set':'⚠ Installed - finishing in the background'}</h2><p>${esc(j.result.summary)}</p>
+   ${Object.entries(rep).filter(([k])=>k!=='done').map(([k,v])=>`<div class="msg ${v.ok?'ok':'warn'}"><div>${esc(k)}: ${esc(v.msg)}</div></div>`).join('')}
+   <div class="row" style="margin:14px 0"><a class="btn" href="${scanarrURL()}" target="_blank" rel="noopener" style="text-decoration:none">Open Scanarr</a>
+     <button class="btn sec" onclick="downloadSummary()">Save setup summary</button><button class="btn sec" onclick="removeWizard()">Remove this setup wizard</button></div>
+   <div class="row" style="align-items:flex-start;gap:20px"><div id="qr" style="background:#fff;padding:10px;border-radius:6px"></div>
+    <div><b>On your phone</b><br><span class="rec">Scan to open Scanarr (same Wi-Fi), then menu → <i>Add to Home screen</i>.<br>Login: <b>${esc(A.username)}</b> and the password you set.<br><br>Run this wizard again any time to change settings, update or uninstall.</span></div></div></div>`}
+function drawQR(){const el=$('#qr');if(!el||typeof qrcode==='undefined')return;const q=qrcode(0,'M');q.addData(scanarrURL());q.make();el.innerHTML=q.createSvgTag({cellSize:5,margin:0})}
+function downloadSummary(){const s=`# Scanarr setup summary\n\nOpen: ${scanarrURL()}\nLogin: ${A.username} (password not stored here)\n\nTemp: ${A.temp}\nCompleted: ${A.completed}\nConfig: ${A.config}\nCompose file: ${A.config}/stack/compose.yml\nFile owner: ${A.puid}:${A.pgid}\n\nScanarr port: ${A.scanarr_port}\nTorrent port: ${A.torrent_port} (TCP+UDP) - forward on your router for best speed\nUpload while downloading: ${A.upload_kbps} KB/s\n\nIndexers: ${A.indexers.join(', ')}\nSubtitles: ${A.languages.join(', ')}\nTime zone: ${A.tz}\nJellyfin: ${A.jellyfin?'port '+A.jellyfin_port:'no'}\nTailscale: ${A.tailscale?'yes':'no'}\n\nForgot the password? See the log of the "scanarr" container - it's printed at every start.\n`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([s],{type:'text/markdown'}));a.download='scanarr-setup-summary.md';a.click()}
+async function removeWizard(){if(!confirm('Remove the setup wizard container? Scanarr keeps running. You can start the wizard again later.'))return;await api('/api/finish',{});$('#main').innerHTML='<h2>Setup wizard removed</h2><p class="lead">You can close this tab. Open Scanarr at <a href="'+scanarrURL()+'">'+scanarrURL()+'</a>.</p>'}
+async function showCompose(){
+  try{const text=await api('/api/compose',payload());
+    $('#inst').innerHTML=`<p class="lead">Paste this into your Docker UI as a new <b>Project / Stack</b> named <b>scanarr</b> and deploy. On UGREEN: Docker → Project → Create → paste → Deploy. It contains your login - keep it private.</p>
+     <div class="row" style="margin-bottom:8px"><button class="btn" id="cp">Copy</button><button class="btn sec" id="dl">Download compose.yml</button></div><pre id="ctext">${esc(text)}</pre>
+     <div class="card">After it starts, open <a href="${scanarrURL()}" target="_blank">${scanarrURL()}</a> - Scanarr finishes connecting qBittorrent and Prowlarr by itself (Apps panel shows progress).</div>`;
+    $('#cp').onclick=()=>navigator.clipboard.writeText(text).then(()=>$('#cp').textContent='Copied ✓');
+    $('#dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/yaml'}));a.download='compose.yml';a.click()}}
+  catch(e){$('#inst').innerHTML=`<div class="banner warn">✕ ${esc(e.message)}</div><button class="btn sec" onclick="step=6;render()">Back to review</button>`}}
+
+boot().catch(e=>{$('#main').innerHTML=`<h2>Setup can't start</h2><div class="banner warn">${esc(e.message)}</div>`});
+</script>
+</body>
+</html>
