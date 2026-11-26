@@ -1,4 +1,4 @@
-# Push a tag like v1.0.1 -> tests, then the image is built for Intel/AMD and ARM and published as
+# Push a tag like v1.0.1 (or create a release with that tag on GitHub) -> tests, then the image is built for Intel/AMD and ARM and published as
 #   ghcr.io/mohammed-iris/scanarr:1.0.1  and  :latest
 # and a GitHub release is created (Scanarr shows it as "update available").
 name: release
@@ -42,4 +42,5 @@ jobs:
             org.opencontainers.image.version=${{ env.VERSION }}
       - name: GitHub release
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes --title "Scanarr ${GITHUB_REF_NAME#v}"
+        # skipped if you created the release on GitHub yourself (that also starts this workflow)
+        run: gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || gh release create "${GITHUB_REF_NAME}" --generate-notes --title "Scanarr ${GITHUB_REF_NAME#v}"
