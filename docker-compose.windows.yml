@@ -1,0 +1,24 @@
+# Test Scanarr in Docker Desktop on Windows, using the qBittorrent and Prowlarr
+# apps you already run on the laptop (no NAS needed).
+#
+#   1. Make C:\Scanarr\temp and C:\Scanarr\completed, and set them in qBittorrent
+#      (Options > Downloads: Default Save Path + "Use another path for incomplete torrents").
+#   2. In a terminal in this folder:  docker compose -f docker-compose.windows.yml up -d --build
+#   3. Open http://localhost:8787  - login:  docker logs scanarr
+#   4. Settings:
+#        Prowlarr URL      http://host.docker.internal:9696
+#        qBittorrent URL   http://host.docker.internal:9090   (+ API key)
+#        Path map          from  C:\Scanarr   to  /data
+services:
+  scanarr:
+    build: .
+    container_name: scanarr
+    ports: ["8787:8787"]          # change the LEFT number for another port, e.g. "8899:8787"
+    environment:
+      - TZ=Asia/Dubai
+    volumes:
+      - ./config:/config          # settings + history, next to this file
+      - C:/Scanarr:/data          # your two local folders appear as /data/temp and /data/completed
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

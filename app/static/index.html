@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f1f1f">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<title>Scanarr</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%230078d4%22/%3E%3Cpath d=%22M12 5v9m0 0-3.5-3.5M12 14l3.5-3.5M7 18h10%22 stroke=%22white%22 stroke-width=%222%22 fill=%22none%22 stroke-linecap=%22round%22/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#1e1e1e; --side:#252526; --act:#2c2c2c; --title:#1f1f1f; --panel:#1e1e1e;
+  --line:#2b2b2b; --line2:#3c3c3c; --text:#cccccc; --dim:#8b8b8b; --bright:#e7e7e7;
+  --acc:#0078d4; --acc2:#2489db; --sel:#04395e; --selb:#0078d4; --hover:#2a2d2e;
+  --ok:#89d185; --bad:#f48771; --warn:#cca700; --input:#313131;
+  --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+button{font:inherit;color:inherit}
+input,select{font:inherit;color:var(--text);background:var(--input);border:1px solid var(--line2);border-radius:2px;padding:4px 7px;outline:none}
+input:focus,select:focus{border-color:var(--acc)}
+input[type=checkbox]{accent-color:var(--acc)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#424242}::-webkit-scrollbar-track{background:transparent}
+
+#app{display:grid;grid-template-rows:35px 1fr 22px;height:100vh}
+/* title bar with command-center search */
+#titlebar{background:var(--title);border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr minmax(280px,560px) 1fr;align-items:center;padding:0 10px}
+#titlebar .brand{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+#titlebar .brand b{color:var(--bright);font-weight:600;letter-spacing:.2px}
+#cmd{display:flex;align-items:center;gap:6px;background:#2a2a2a;border:1px solid var(--line2);border-radius:6px;padding:0 8px;height:24px}
+#cmd:focus-within{border-color:var(--acc)}
+#cmd input{flex:1;background:none;border:0;padding:0;height:22px}
+#cmd select{background:none;border:0;padding:0 2px;color:var(--dim);height:22px}
+#cmd kbd{font:11px var(--mono);color:var(--dim);border:1px solid var(--line2);border-radius:3px;padding:0 4px}
+
+#work{display:grid;grid-template-columns:48px var(--sidew,260px) 1fr;min-height:0}
+/* activity bar */
+#actbar{background:var(--act);display:flex;flex-direction:column;align-items:center;padding-top:4px}
+#actbar button{width:48px;height:48px;border:0;background:none;color:#858585;cursor:pointer;position:relative;display:grid;place-items:center}
+#actbar button:hover{color:var(--bright)}
+#actbar button.on{color:var(--bright)}
+#actbar button.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--bright)}
+#actbar .badge{position:absolute;right:8px;bottom:9px;background:var(--acc);color:#fff;font-size:9px;border-radius:8px;padding:0 4px;min-width:14px;line-height:14px}
+#actbar .spacer{flex:1}
+svg.i{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+/* sidebar */
+#side{background:var(--side);border-right:1px solid var(--line);overflow:auto;min-width:0}
+.sh{height:35px;display:flex;align-items:center;padding:0 20px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.sec{border-top:1px solid var(--line)}
+.sec>.st{display:flex;align-items:center;gap:4px;padding:4px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;user-select:none}
+.sec>.st::before{content:"›";display:inline-block;width:12px;transform:rotate(90deg);transition:transform .1s}
+.sec.closed>.st::before{transform:none}.sec.closed>.sb{display:none}
+.sb{padding:2px 0 8px}
+.li{display:flex;align-items:center;gap:8px;padding:2px 20px;cursor:pointer;white-space:nowrap}
+.li:hover{background:var(--hover)}
+.li.on{background:var(--sel);outline:1px solid var(--selb);outline-offset:-1px}
+.li .n{margin-left:auto;font-size:11px;color:var(--dim);background:#3a3a3a;border-radius:8px;padding:0 6px}
+.li input{margin:0}
+.sidenote{padding:4px 20px 8px;color:var(--dim);line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:4px;padding:2px 20px}
+.chip{border:1px solid var(--line2);background:none;border-radius:10px;padding:1px 9px;cursor:pointer;font-size:12px}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.field{padding:3px 20px}.field input{width:100%}
+/* main */
+#main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tabs{height:35px;background:var(--side);display:flex;border-bottom:1px solid var(--line);flex:none}
+.tab{display:flex;align-items:center;gap:6px;padding:0 14px;background:var(--bg);border-top:1px solid var(--acc);color:var(--bright);font-size:13px}
+.tab .sub{color:var(--dim);font-size:12px}
+.toolbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);flex:none;min-height:34px;flex-wrap:wrap}
+.toolbar .grow{flex:1}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:2px;padding:4px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--acc2)}.btn:disabled{opacity:.5;cursor:default}
+.btn.sec2{background:#3a3d41;color:var(--text)}.btn.sec2:hover{background:#45494e}
+.btn.xs{padding:1px 8px;font-size:12px}
+.pill{font-size:11px;border-radius:9px;padding:0 7px;background:#3a3a3a;color:var(--dim)}
+.pill.bad{background:#5a1d1d;color:var(--bad)}
+.view{display:none;flex:1;flex-direction:column;min-height:0}
+.view.on{display:flex}
+.split{flex:1;display:flex;flex-direction:column;min-height:0}
+.grid{flex:1;overflow:auto;min-height:60px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{position:sticky;top:0;background:var(--bg);z-index:1;text-align:left;font-weight:400;color:var(--dim);padding:4px 8px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+thead th:hover{color:var(--bright)}
+thead th.s::after{content:" ▾"}thead th.s.asc::after{content:" ▴"}
+tbody td{padding:2px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:24px;border-bottom:1px solid #232323}
+tbody tr{cursor:default}
+tbody tr:hover{background:var(--hover)}
+tbody tr.sel{background:var(--sel);outline:1px solid var(--selb);outline-offset:-1px}
+td.num{font-family:var(--mono);font-size:12px;text-align:right}
+th.num{text-align:right}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.dim{color:var(--dim)}
+.tag{font-size:10px;border:1px solid var(--line2);border-radius:3px;padding:0 4px;margin-left:6px;color:var(--dim);font-family:var(--mono)}
+.tag.fbad{color:var(--bad);border-color:var(--bad)}.tag.fwarn{color:var(--warn);border-color:var(--warn)}
+.best{display:inline-block;background:#3a2f00;color:#ffd866;border:1px solid #6b5600;border-radius:3px;font-size:11px;padding:0 5px;margin-right:6px}
+.tag.q4k{color:#c586c0;border-color:#c586c0}.tag.q1080{color:#4fc1ff;border-color:#4fc1ff}.tag.q720{color:#89d185;border-color:#89d185}
+.bar{height:14px;background:#333;border-radius:2px;position:relative;overflow:hidden}
+.bar>i{position:absolute;inset:0 auto 0 0;background:var(--acc)}
+.bar.done>i{background:#388a34}
+.bar>span{position:relative;font:11px/14px var(--mono);padding-left:6px;color:#fff}
+/* bottom panel (like VS Code panel) */
+#sash{height:4px;cursor:ns-resize;background:transparent;border-top:1px solid var(--line2);flex:none}
+#sash:hover{background:var(--acc)}
+#panel{height:var(--panelh,190px);flex:none;display:flex;flex-direction:column;background:var(--panel);min-height:0}
+#panel .ph{display:flex;gap:18px;padding:0 14px;height:32px;align-items:center;font-size:11px;text-transform:uppercase;letter-spacing:.4px;flex:none}
+#panel .ph span{border-bottom:1px solid var(--bright);color:var(--bright);padding:6px 0}
+#detail{flex:1;overflow:auto;padding:4px 16px 12px}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:3px 12px;font-size:12px}
+.kv .k{color:var(--dim)}.kv .v{font-family:var(--mono);word-break:break-all}
+.kv .v.big{font-family:inherit;font-size:14px;color:var(--bright)}
+.clean{color:#4ec9b0}
+.empty{padding:40px;text-align:center;color:var(--dim)}
+.empty h2{font-weight:300;color:var(--text);font-size:22px;margin:0 0 6px}
+.keys{display:inline-grid;grid-template-columns:auto auto;gap:4px 14px;margin-top:14px;text-align:left}
+.keys kbd{font:11px var(--mono);border:1px solid var(--line2);border-bottom-width:2px;border-radius:3px;padding:1px 5px;justify-self:end}
+/* settings editor */
+#settings{flex:1;overflow:auto;padding:10px 0 40px}
+.sg{max-width:860px;padding:0 28px}
+.sg h2{font-size:20px;font-weight:400;color:var(--bright);margin:22px 0 4px;padding-top:6px}
+.set{padding:10px 10px;border-left:2px solid transparent;margin:0 -12px}
+.set:hover{background:#2a2d2e55;border-left-color:var(--line2)}
+.set .t{font-weight:600;color:var(--bright)}.set .t span{color:var(--dim);font-weight:400}
+.set .d{color:var(--dim);margin:2px 0 6px;font-size:12px}
+.set input,.set select{width:100%;max-width:520px}
+table.kinds{max-width:860px;table-layout:auto;margin-top:4px}table.kinds th{position:static;cursor:default}table.kinds td{border:0;padding:3px 6px 3px 0;height:auto}table.kinds td:first-child{width:110px;color:var(--bright)}table.kinds td:nth-child(2) input{width:140px}table.kinds td:nth-child(3) input{width:100%}
+.idxrow{display:grid;grid-template-columns:130px 1fr 170px 26px auto auto;gap:6px;align-items:center;margin-bottom:6px;max-width:860px}
+/* status bar */
+#status{background:var(--acc);color:#fff;display:flex;align-items:center;font-size:12px;padding:0 4px}
+#status .s{padding:0 8px;display:flex;align-items:center;gap:5px;height:22px;white-space:nowrap}
+#status .s:hover{background:#ffffff1f}
+#status .grow{flex:1}
+#status.off{background:#6b2b2b}
+#toast{position:fixed;right:14px;bottom:32px;background:#252526;border:1px solid var(--line2);box-shadow:0 4px 14px #0008;padding:8px 14px;border-radius:4px;display:none;max-width:420px;z-index:9}
+#toast.ok{border-left:3px solid var(--ok)}#toast.bad{border-left:3px solid var(--bad)}
+.modal{position:fixed;inset:0;background:#0007;display:grid;place-items:start center;padding-top:14vh;z-index:10}.modal[hidden]{display:none}
+.plist{max-height:50vh;overflow:auto;margin-top:6px}.pi{padding:6px 10px;border-radius:3px;cursor:pointer;display:flex;justify-content:space-between}
+.pi.on{background:var(--sel);outline:1px solid var(--selb)}.pi kbd{font:11px var(--mono);border:1px solid var(--line2);border-radius:3px;padding:0 4px;color:var(--dim)}
+.mbox.big{width:min(760px,calc(100vw - 32px))}
+.pbody{max-height:52vh;overflow:auto;margin-top:10px;border:1px solid var(--line2);border-radius:4px}
+.pbody label{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.pbody label:hover{background:var(--hover)}.pbody .fn{word-break:break-all;font-family:var(--mono);font-size:12px}.pbody .fs{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.pbody .v .fn{color:var(--bright)}.pbody .x .fn{color:var(--bad)}
+.pwarn div{background:#5a1d1d55;border:1px solid #8a3b3b;color:#f8b0a6;border-radius:4px;padding:6px 10px;margin-top:8px}
+.whit{display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
+@media (max-width:820px){.whit{grid-template-columns:1fr auto}.whit .dim{grid-column:1}}
+.card{background:var(--side);border:1px solid var(--line2);border-radius:6px;padding:12px 14px;margin-bottom:12px;max-width:1000px}
+.card .ct{display:flex;align-items:center;gap:6px}
+.rvrow{display:grid;grid-template-columns:minmax(200px,40%) 20px 1fr;gap:8px;align-items:center;margin:4px 0}
+.rvrow .dim{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12px}.rvrow .arrow{color:var(--dim);text-align:center}
+#status .sbad{background:#00000033}#status .sbadt{color:#ffd27a;font-weight:600}
+.mbox{background:#252526;border:1px solid var(--line2);box-shadow:0 8px 30px #000a;border-radius:6px;padding:18px 20px;width:420px}
+.mbox .mt{font-size:15px;color:var(--bright);margin-bottom:12px}.mfiles{display:flex;gap:8px;align-items:center;margin-bottom:16px}.mbtns{display:flex;justify-content:flex-end;gap:8px}
+.monly{display:none}
+#sheetclose{display:none}
+@media (max-width:820px){
+  html,body{height:100dvh}
+  #app{height:100dvh;grid-template-rows:auto minmax(0,1fr) 20px;grid-template-columns:minmax(0,1fr)}
+  .monly{display:revert}
+  .donly{display:none!important}
+  /* top bar: menu + full-width search */
+  #titlebar{grid-template-columns:auto minmax(0,1fr) auto;gap:8px;padding:8px 10px;height:auto}
+  #cmd{min-width:0}#q{min-width:0!important;width:100%}#cmd select{max-width:84px}
+  #titlebar>div:last-child{display:none!important}
+  #titlebar .brand b{display:none}
+  #cmd{height:38px;border-radius:8px}#cmd input{font-size:16px;height:36px}#cmd kbd{display:none}
+  #titlebar>div:last-child #whoami{display:none}
+  #mfilter{background:none;border:1px solid var(--line2);border-radius:8px;height:38px;width:42px;display:grid;place-items:center;color:var(--text)}
+  #logout{display:none}
+  /* bottom tab bar */
+  #work{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 58px}
+  #main{grid-row:1;grid-column:1;min-width:0}
+  .grid{overflow-x:hidden}
+  #actbar{grid-row:2;grid-column:1;flex-direction:row;justify-content:space-around;padding:0 0 env(safe-area-inset-bottom);border-top:1px solid var(--line)}
+  #actbar .spacer{display:none}
+  #actbar button{height:58px;flex:1}
+  #actbar button.on::before{left:25%;right:25%;top:0;bottom:auto;width:auto;height:2px}
+  /* filters = slide-in drawer */
+  #side{position:fixed;z-index:20;top:0;bottom:0;left:0;width:min(86vw,320px);transform:translateX(-105%);transition:transform .2s;box-shadow:4px 0 24px #000a}
+  body.drawer #side{transform:none}
+  #scrim{position:fixed;inset:0;background:#0008;z-index:19;display:none}
+  body.drawer #scrim,body.sheet #scrim{display:block}
+  .li{padding:9px 20px;font-size:15px}.chip{padding:5px 12px;font-size:14px}.sec>.st{padding:10px 12px}
+  /* lists become cards */
+  .tabs{display:none}
+  .toolbar{padding:8px 10px;gap:6px}.toolbar input{width:100%!important;flex:1 1 100%;font-size:16px;height:36px}
+  .btn{padding:8px 14px}.btn.xs{padding:6px 10px;font-size:13px}
+  table,tbody{display:block;width:100%}thead{display:none}colgroup{display:none}
+  tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  tbody td{display:block;height:auto;padding:0;border:0;white-space:normal;overflow:visible;font-size:12px}
+  tbody td:first-child{flex:1 1 100%;font-size:14px;color:var(--bright);line-height:1.35;word-break:break-word}
+  td.num{text-align:left}
+  tbody tr.sel{outline:none;background:#04395e88}
+  /* search cards */
+  #rtable td:nth-child(6){display:none}
+  #rtable td:nth-child(5)::before{content:"▲ "}
+  #rtable td.mact{margin-left:auto;display:block}
+  /* download cards */
+  #dtable td:nth-child(4){flex:1 1 100%}#dtable .bar{height:18px}#dtable .bar>span{line-height:18px}
+  #dtable td:nth-child(6)::before{content:"↓ "}#dtable td:nth-child(7)::before{content:"↑ "}#dtable td:nth-child(9){display:none}
+  #v-downloads .toolbar{position:sticky;top:0;z-index:2;background:var(--bg)}
+  /* details = bottom sheet */
+  #sash{display:none}
+  #panel{position:fixed;z-index:21;left:0;right:0;bottom:0;height:auto;max-height:78dvh;border-radius:14px 14px 0 0;border-top:1px solid var(--line2);
+    box-shadow:0 -8px 30px #000b;transform:translateY(105%);transition:transform .2s;padding-bottom:env(safe-area-inset-bottom)}
+  body.sheet #panel{transform:none}
+  #panel .ph{justify-content:space-between}
+  #sheetclose{display:block;background:none;border:0;color:var(--dim);font-size:22px;padding:0 4px}
+  .kv{grid-template-columns:1fr}.kv .k{margin-top:6px}.kv .v.big{font-size:15px}
+  #detail .btn,#detail select{font-size:15px;padding:10px 14px}
+  /* renamed / log / review */
+  #ntable td:first-child,#atable td:first-child{font-size:11px;color:var(--dim);order:-1}
+  #ntable td:nth-child(2),#atable td:nth-child(2){flex:1 1 100%;font-size:13px;color:var(--text)}
+  #ntable td:nth-child(3),#atable td:nth-child(4){flex:1 1 100%;font-size:14px}
+  #ntable td:last-child{margin-left:auto}
+  #rvlist{padding:10px!important}.rvrow{grid-template-columns:1fr}.rvrow .arrow{display:none}.rvrow input{font-size:16px;height:38px}
+  .card{padding:12px}.card .ct{flex-wrap:wrap}
+  /* settings */
+  .sg{padding:0 14px}.sg h2{font-size:18px}.set{margin:0}.set input,.set select{max-width:none;font-size:16px;height:38px}
+  .idxrow{grid-template-columns:1fr 1fr;}.idxrow input:nth-child(2){grid-column:1/-1;order:-1}
+  table.kinds td:nth-child(2) input{width:100%}table.kinds tr{display:grid;grid-template-columns:90px 1fr 1fr;gap:6px;padding:4px 0;border:0}
+  /* status bar: dots only */
+  #status{font-size:11px;padding:0 2px;overflow:hidden;min-width:0}#status .s{padding:0 5px;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  #status #st-speed,#status #st-disk{display:none}
+  #toast{left:12px;right:12px;bottom:84px;max-width:none}
+  .mbox{width:calc(100vw - 32px)}
+  .empty{padding:30px 16px}.keys{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="titlebar">
+    <button id="mfilter" class="monly" title="Filters" aria-label="Filters"><svg class="i" style="width:20px;height:20px" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button>
+    <div class="brand donly"><svg class="i" style="width:18px;height:18px;color:var(--acc2)" viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg><b>Scanarr</b></div>
+    <form id="cmd" autocomplete="off">
+      <svg class="i" style="width:15px;height:15px;color:var(--dim)" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>
+      <input id="q" placeholder="Search all indexers…  (Inception 2010, Tracker S04E01)">
+      <select id="cat" title="Search in category"><option value="all">All</option><option value="movies">Movies</option><option value="tv">TV</option><option value="audio">Audio</option><option value="books">Books</option><option value="pc">PC</option><option value="console">Console</option><option value="xxx">XXX</option><option value="other">Other</option></select>
+      <kbd>/</kbd>
+    </form>
+    <div style="justify-self:end;display:flex;gap:10px;align-items:center"><button class="btn sec2 xs" onclick="openPalette()" title="Command palette (Ctrl+Shift+P)">⌘ Commands</button><span class="dim" id="whoami" style="font-size:12px"></span><button class="btn sec2 xs" id="logout">Sign out</button></div>
+  </div>
+
+  <div id="work">
+    <nav id="actbar">
+      <button data-v="search" class="on" title="Search ( / )"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></button>
+      <button data-v="downloads" title="Downloads"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg><span class="badge" id="dlbadge" hidden></span></button>
+      <button data-v="review" title="Needs review"><svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4m0 3v.01"/></svg><span class="badge" id="rvbadge" hidden style="background:#cca700;color:#000"></span></button>
+      <button data-v="renamed" title="Renamed (undo)"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M4 12h10M4 18h7"/><path d="m15 17 2 2 4-4"/></svg></button>
+      <button data-v="watch" title="Watchlist"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="badge" id="wbadge" hidden style="background:#89d185;color:#000"></span></button>
+      <button data-v="log" title="Log"><svg class="i" viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 0 1 2-2z"/><path d="M9 9h6M9 13h4"/></svg></button>
+      <div class="spacer"></div>
+      <button data-v="settings" title="Settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    </nav>
+
+    <aside id="side"></aside>
+
+    <section id="main">
+      <!-- SEARCH -->
+      <div class="view on" id="v-search">
+        <div class="tabs"><div class="tab">Search <span class="sub" id="qlabel"></span></div></div>
+        <div class="toolbar"><span id="rcount" class="dim">Type in the search box above and press Enter.</span><span id="rerrs"></span><span class="grow"></span>
+          <button class="btn sec2 xs" id="watchbtn" hidden onclick="watchThis()" title="Re-check this search automatically and tell me when something new appears">☆ Watch this search</button>
+          <input id="ftext" placeholder="Filter titles…" style="width:220px"></div>
+        <div class="split">
+          <div class="grid" id="rgrid">
+            <div class="empty" id="rempty"><h2>Search every indexer at once</h2>
+              <div>Every Prowlarr indexer in one list: movies, TV, music, software, books, anything.<br>Movies and TV are renamed and get subtitles automatically; everything else lands in its own folder.</div>
+              <div class="keys"><kbd>/</kbd><span>Focus search</span><kbd>↑ ↓</kbd><span>Move selection</span><kbd>Enter</kbd><span>Download selected</span><kbd>Dbl-click</kbd><span>Download</span></div></div>
+            <table id="rtable" hidden><colgroup><col><col style="width:80px"><col style="width:130px"><col style="width:86px"><col style="width:64px"><col style="width:64px"><col style="width:62px"></colgroup>
+              <thead><tr><th data-k="title">Name</th><th data-k="category">Category</th><th data-k="indexer">Indexer</th><th data-k="size" class="num">Size</th><th data-k="seeders" class="num s">Seeds</th><th data-k="leechers" class="num">Peers</th><th data-k="published" class="num">Age</th></tr></thead>
+              <tbody></tbody></table>
+          </div>
+          <div id="sash"></div>
+          <div id="panel"><div class="ph"><span>Details</span><button id="sheetclose" aria-label="Close">✕</button></div><div id="detail"><div class="dim" style="padding:8px 0">Select a result to see details and what it will be renamed to.</div></div></div>
+        </div>
+      </div>
+
+      <!-- DOWNLOADS -->
+      <div class="view" id="v-downloads">
+        <div class="tabs"><div class="tab">Downloads <span class="sub">qBittorrent</span></div></div>
+        <div class="toolbar">
+          <button class="btn sec2 xs dact" data-a="start" title="Resume">▶ Resume</button>
+          <button class="btn sec2 xs dact" data-a="stop" title="Pause">❚❚ Pause</button>
+          <button class="btn sec2 xs dact" data-a="recheck" title="Force recheck">↻ Recheck</button>
+          <button class="btn sec2 xs dact" data-a="delete" title="Remove (Del)" style="color:var(--bad)">✕ Remove</button>
+          <span id="dcount" class="dim"></span><span class="grow"></span><input id="dfilter" placeholder="Filter…" style="width:220px"></div>
+        <div class="grid"><table id="dtable"><colgroup><col><col style="width:70px"><col style="width:86px"><col style="width:150px"><col style="width:110px"><col style="width:90px"><col style="width:90px"><col style="width:70px"><col style="width:70px"></colgroup>
+          <thead><tr><th data-k="name">Name</th><th data-k="kind">Type</th><th data-k="size" class="num">Size</th><th data-k="progress">Progress</th><th data-k="state">Status</th><th data-k="dlspeed" class="num">Down</th><th data-k="upspeed" class="num">Up</th><th data-k="eta" class="num">ETA</th><th data-k="ratio" class="num">Ratio</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+
+      <!-- ACTIVITY -->
+      <!-- REVIEW -->
+      <div class="view" id="v-review">
+        <div class="tabs"><div class="tab">Needs review</div></div>
+        <div class="toolbar"><span class="dim">Scanarr wasn't sure about these, so nothing was touched. Fix the name (folders are relative to Completed) and approve.</span></div>
+        <div class="grid" id="rvlist" style="padding:12px 16px"></div>
+      </div>
+
+      <!-- RENAMED -->
+      <div class="view" id="v-renamed">
+        <div class="tabs"><div class="tab">Renamed <span class="sub">every rename can be undone</span></div></div>
+        <div class="toolbar"><button class="btn sec2 xs" id="procnow">Check now</button><span class="dim">Finished downloads are renamed and given subtitles automatically.</span><span class="grow"></span><input id="nfilter" placeholder="Filter…" style="width:220px"></div>
+        <div class="grid"><table id="ntable"><colgroup><col style="width:140px"><col style="width:32%"><col><col style="width:70px"><col style="width:120px"></colgroup>
+          <thead><tr><th>When</th><th>Original</th><th>Renamed to</th><th>Subs</th><th></th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <!-- WATCHLIST -->
+      <div class="view" id="v-watch">
+        <div class="tabs"><div class="tab">Watchlist</div></div>
+        <div class="toolbar"><span class="dim" id="wnote">Saved searches are re-checked automatically (internet only). New matches show up here. Nothing downloads by itself.</span></div>
+        <div class="grid" id="wlist" style="padding:12px 16px"></div>
+      </div>
+
+      <!-- LOG -->
+      <div class="view" id="v-log">
+        <div class="tabs"><div class="tab">Log</div></div>
+        <div class="grid"><table id="atable"><colgroup><col style="width:150px"><col style="width:32%"><col style="width:90px"><col><col style="width:30%"></colgroup>
+          <thead><tr><th>When</th><th>Item</th><th>Event</th><th>Path</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="view" id="v-settings">
+        <div class="tabs"><div class="tab">Settings</div></div>
+        <div id="settings"><div class="sg">
+          <h2 id="s-indexers">Prowlarr</h2>
+          <div class="set"><div class="t">Prowlarr URL</div><div class="d">Every indexer you add in Prowlarr shows up here automatically. Use <code>http://prowlarr:9696</code> when both run in the same Docker compose.</div><input data-p="prowlarr.url"></div>
+          <div class="set"><div class="t">Prowlarr API key</div><div class="d">Prowlarr → Settings → General → Security → API Key.</div><input data-p="prowlarr.api_key" type="password"></div>
+          <div class="set"><button class="btn sec2 xs" id="testpr">Test &amp; sync indexers</button> <span id="prres"></span><div id="prlist" class="d" style="margin-top:6px"></div></div>
+          <div class="set"><div class="t">Indexer health</div><div class="d">Response time and reliability from your recent searches. An indexer that fails 3 times in a row is skipped for 30 minutes so searches stay fast.</div>
+            <table class="kinds" id="ihtable"><thead><tr><th>Indexer</th><th>Status</th><th>Last response</th><th>Success</th><th></th></tr></thead><tbody></tbody></table>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span class="dim">Give up on an indexer after</span><input data-p="indexer_timeout" type="number" min="3" style="max-width:80px"><span class="dim">seconds</span></div></div>
+          <div class="set"><div class="t">Search preferences</div><div class="d">Used for the <span class="best">★ Best</span> badge and junk flags.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;max-width:700px"><span class="dim">Preferred quality</span><select data-p="prefs.quality" style="max-width:110px"><option>2160p</option><option>1080p</option><option>720p</option></select>
+              <span class="dim">max movie</span><input data-p="prefs.max_gb_movie" type="number" step="0.5" min="0" style="max-width:80px"><span class="dim">GB · max episode</span><input data-p="prefs.max_gb_episode" type="number" step="0.1" min="0" style="max-width:80px"><span class="dim">GB</span></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;max-width:700px"><select data-p="prefs.hide_cam" data-bool style="max-width:260px"><option value="true">Hide CAM / TS by default</option><option value="false">Show CAM / TS</option></select>
+              <select data-p="prefs.hide_suspicious" data-bool style="max-width:300px"><option value="false">Show suspiciously small (flagged)</option><option value="true">Hide suspiciously small by default</option></select></div></div>
+          <div class="set"><div class="t">Extra Torznab feeds <span>· optional</span></div>
+            <div class="d">Only for feeds that aren't in Prowlarr (e.g. a Jackett instance).</div>
+            <div id="idxlist"></div><button class="btn sec2 xs" id="addidx">Add feed</button></div>
+
+          <h2 id="s-qbit">qBittorrent</h2>
+          <div class="set"><div class="t">Web UI URL</div><div class="d">Address of qBittorrent's Web UI as seen from Scanarr, e.g. <code>http://qbittorrent:9090</code> (use your Web UI port).</div><input data-p="qbit.url"></div>
+          <div class="set"><div class="t">API key</div><div class="d">qBittorrent 5.2+: Options → Web UI → API Key → Generate, then copy it here (starts with <code>qbt_</code>).</div><input data-p="qbit.api_key" type="password" placeholder="qbt_…"></div>
+          <div class="set"><div class="t">Username / password <span>· only for qBittorrent older than 5.2</span></div><div class="d">Leave empty when you use an API key.</div>
+            <div style="display:flex;gap:8px;max-width:520px"><input data-p="qbit.username" placeholder="username"><input data-p="qbit.password" type="password" placeholder="password"></div></div>
+          <div class="set"><button class="btn sec2 xs" id="testqb">Test connection</button> <span id="qbres"></span></div>
+
+          <h2 id="s-library">Folders &amp; Renaming</h2>
+          <div class="set"><div class="t">Folders <span>· read from qBittorrent</span></div>
+            <div class="d">Set them in qBittorrent → Options → Downloads: <b>Default Save Path</b> = Completed, <b>Use another path for incomplete torrents</b> = Temp. Point them at local folders for testing or NAS folders later — nothing changes here.</div>
+            <div class="kv" id="fldinfo" style="max-width:700px"><div class="k">Completed</div><div class="v dim">click Test connection above</div></div></div>
+          <div class="set"><div class="t">Download types</div><div class="d">Type is picked from the indexer's category. <b>Movies</b> and <b>TV</b> download to <code>Incoming</code>, then get subtitles and a clean name (<span class="clean">Title (Year).mkv</span>, <span class="clean">Show S01E01.mkv</span>). Other types go straight to their folder with the original name. Drop files into <code>Unsorted</code> by hand and they're renamed too.</div>
+            <table class="kinds"><thead><tr><th>Type</th><th>qBittorrent category</th><th>Folder inside Completed</th></tr></thead><tbody id="kindrows"></tbody></table></div>
+          <div class="set"><div class="t">Torrents added directly in qBittorrent</div><div class="d">Rename finished movies/episodes from those too (type guessed from the file name). Anything else is left where qBit saved it.</div>
+            <select data-p="process_external" data-bool><option value="true">Handle them too</option><option value="false">Ignore them</option></select></div>
+          <div class="set"><div class="t">Movie folder layout</div><select data-p="movie_folders" data-bool><option value="true">Movies/Title (Year)/Title (Year).mkv</option><option value="false">Movies/Title (Year).mkv</option></select></div>
+          <div class="set"><div class="t">TMDb API key</div><div class="d">Free at themoviedb.org. Confirms the title and year — no artwork or metadata is saved. Without it, unclear names go to Needs review more often.</div><input data-p="tmdb_api_key" type="password"></div>
+          <div class="set"><div class="t">Path map <span>· optional</span></div><div class="d">Only if qBittorrent sees the folders under different paths than Scanarr (e.g. qBit in Docker, Scanarr on Windows).</div>
+            <div style="display:flex;gap:8px;max-width:520px"><input data-p="path_map.from" placeholder="qBittorrent path"><input data-p="path_map.to" placeholder="Scanarr path"></div></div>
+
+          <h2 id="s-subs">Subtitles</h2>
+          <div class="set"><div class="t">Languages</div><div class="d">Comma-separated codes, e.g. <code>en, ml, ta</code>. Saved as <span class="clean">Title (Year).en.srt</span>. Subtitles shipped inside the torrent are used first.</div><input data-p="subtitle_languages"></div>
+          <div class="set"><div class="t">OpenSubtitles API key</div><div class="d">opensubtitles.com → Profile → API consumers → New consumer.</div><input data-p="opensubtitles.api_key" type="password"></div>
+          <div class="set"><div class="t">OpenSubtitles login <span>· username / password</span></div><div class="d">A free account gives a daily download allowance.</div>
+            <div style="display:flex;gap:8px;max-width:520px"><input data-p="opensubtitles.username" placeholder="username"><input data-p="opensubtitles.password" type="password" placeholder="password"></div></div>
+          <div class="set"><div class="t">Retry missing subtitles <span>· days</span></div><div class="d">New releases often have no subtitles yet. Scanarr retries once a day.</div><input data-p="subtitle_retry_days" type="number" min="0" style="max-width:120px"></div>
+
+          <h2 id="s-safety">Safety &amp; Cleanup</h2>
+          <div class="set"><div class="t">Remove finished torrents</div><div class="d">You don't seed: once a download is done (and renamed), the torrent is removed from qBittorrent. Files are kept.</div>
+            <select data-p="auto_remove" data-bool><option value="true">Remove when finished (no seeding)</option><option value="false">Keep them in qBittorrent</option></select></div>
+          <div class="set"><div class="t">Fake-file guard</div><div class="d">Movie/TV torrents containing <code>.exe .scr .lnk .bat</code>… are a classic malware trick. They're removed with their files as soon as the file list is known.</div>
+            <select data-p="guard" data-bool><option value="true">On</option><option value="false">Off</option></select></div>
+          <div class="set"><div class="t">Dead torrents</div><div class="d">No progress for this many hours (0 = never check).</div>
+            <div style="display:flex;gap:8px;max-width:520px"><input data-p="dead_hours" type="number" min="0" style="max-width:120px"><select data-p="dead_action"><option value="flag">Flag them</option><option value="remove">Remove them (and their partial files)</option></select></div></div>
+          <div class="set"><div class="t">Keep free space <span>· GB</span></div><div class="d">Downloads that would leave less than this free in Temp or Completed are refused (you can override per download).</div><input data-p="min_free_gb" type="number" min="0" style="max-width:120px"></div>
+
+          <h2 id="s-schedule">Schedule <span style="font-size:13px;color:var(--dim)">· HDD-friendly</span></h2>
+          <div class="set"><div class="t">Rename finished downloads</div><div class="d">qBittorrent wakes the HDD anyway when it moves a finished download to Completed, so renaming right then is the most disk-friendly choice. Choose a time window if you prefer; finished downloads wait untouched until then.</div>
+            <select data-p="rename_mode"><option value="immediate">Right away, when qBittorrent finishes moving it (recommended)</option><option value="window">Only during a time window (wakes the HDD again then)</option></select>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px;max-width:520px"><span class="dim">from</span><input data-p="rename_window.start" type="time" style="max-width:130px"><span class="dim">to</span><input data-p="rename_window.end" type="time" style="max-width:130px"></div></div>
+          <div class="set"><div class="t">Housekeeping</div><div class="d">Scan the <code>Unsorted</code> folder, save subtitles found later, refresh the library index. Missing subtitles are <i>searched</i> daily over the internet using the file's stored fingerprint, and parked on the SSD until the HDD is awake.</div>
+            <select data-p="housekeeping"><option value="awake">Only when the HDD is already awake (a download just finished): never wakes it</option><option value="daily">Once a day at a set time (wakes the HDD once a day)</option><option value="off">Only when I press "Check now"</option></select>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span class="dim">daily at</span><input data-p="housekeeping_time" type="time" style="max-width:130px"></div></div>
+          <div class="set"><div class="t">Check qBittorrent every <span>· seconds</span></div><div class="d">Only asks qBittorrent's API, never reads the disk.</div><input data-p="poll_seconds" type="number" min="10" style="max-width:120px"></div>
+
+          <h2 id="s-notify">Notifications &amp; Watchlist</h2>
+          <div class="set"><div class="t">Phone notifications <span>· optional, via ntfy</span></div><div class="d">Install the free <b>ntfy</b> app on your phone, subscribe to a long random topic name, and paste its URL here (e.g. <code>https://ntfy.sh/scanarr-k3j9x2q7</code>). You'll be told about new watchlist releases, items needing review and blocked fakes.</div>
+            <div style="display:flex;gap:8px;max-width:620px"><input data-p="ntfy_url" placeholder="https://ntfy.sh/your-secret-topic"><button class="btn sec2 xs" id="testntfy">Send test</button></div></div>
+          <div class="set"><div class="t">Re-check the watchlist every <span>· hours</span></div><input data-p="watch_hours" type="number" min="1" style="max-width:120px"></div>
+
+          <h2 id="s-backup">Backup</h2>
+          <div class="set"><div class="t">Backup &amp; restore</div><div class="d">One file with all settings (API keys and login included, so keep it private) and the rename history. Restoring replaces the current ones.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn sec2" href="/api/backup" style="text-decoration:none">Download backup</a>
+              <label class="btn sec2" style="cursor:pointer">Restore from file…<input type="file" accept=".zip" id="restorefile" hidden></label></div></div>
+
+          <h2 id="s-login">Login</h2>
+          <div class="set"><div class="t">Username</div><input data-p="auth.username" autocomplete="off"></div>
+          <div class="set"><div class="t">Password</div><div class="d">Forgot it? <code>docker logs scanarr</code> (or the Scanarr window on Windows) prints the login at every start.</div><input data-p="auth.password" type="password" autocomplete="new-password"></div>
+          <div class="set"><button class="btn" id="save">Save settings</button> <button class="btn sec2 monly" onclick="$('#logout').click()">Sign out</button></div>
+        </div></div>
+      </div>
+    </section>
+  </div>
+
+  <footer id="status">
+    <div class="s" id="st-qb" title="qBittorrent">● qBittorrent</div>
+    <div class="s" id="st-speed"></div>
+    <div class="s" id="st-pr" title="Prowlarr">● Prowlarr</div>
+    <div class="grow"></div>
+    <div class="s" id="st-rv" style="cursor:pointer" hidden></div>
+    <div class="s" id="st-disk"></div>
+    <div class="s" id="st-subs"></div>
+  </footer>
+</div>
+<div id="toast"></div>
+<div id="scrim"></div>
+<div id="pmodal" class="modal" hidden><div class="mbox big">
+  <div style="display:flex;align-items:center;gap:8px"><div class="mt" style="flex:1;margin:0;word-break:break-word"></div><button class="btn sec2 xs" onclick="peekCancel()">✕</button></div>
+  <div class="pwarn"></div><div class="pbody"></div>
+  <div class="mbtns" style="margin-top:12px;align-items:center"><span class="psum dim" style="margin-right:auto"></span>
+    <button class="btn sec2" onclick="peekCancel()">Cancel</button><button class="btn pgo" onclick="peekGo()" disabled>Download selected</button></div></div></div>
+<div id="palette" class="modal" hidden style="padding-top:8vh"><div class="mbox big" style="padding:8px">
+  <input placeholder="Type a command…  (Ctrl+Shift+P / Ctrl+K)" style="width:100%;font-size:15px;padding:8px 10px">
+  <div class="plist"></div></div></div>
+<div id="cmodal" class="modal" hidden><div class="mbox"><div class="mt"></div><div class="mm dim" style="margin-bottom:16px"></div>
+  <div class="mbtns"><button class="btn sec2 mno">Cancel</button><button class="btn mok">OK</button></div></div></div>
+<div id="modal" class="modal" hidden><div class="mbox"><div class="mt"></div>
+  <label class="mfiles"><input type="checkbox" id="delfiles"> Also delete the downloaded files from the NAS</label>
+  <div class="mbtns"><button class="btn sec2" onclick="closeModal()">Cancel</button><button class="btn mok" style="background:#a1260d" onclick="dlAction('delete',{delete_files:$('#delfiles').checked});closeModal()">Remove</button></div></div></div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const api=async(p,o={})=>{const r=await fetch(p,{headers:{'Content-Type':'application/json'},...o});if(r.status===401){location.href='/login';throw new Error('login required')}
+  const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.detail||r.statusText);e.status=r.status;throw e}return d};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast=(m,c='')=>{const t=$('#toast');t.textContent=m;t.className=c;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3500)};
+const size=b=>{if(!b)return'—';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++}return b.toFixed(i>=3?2:i?1:0)+' '+u[i]};
+const speed=b=>b?size(b)+'/s':'—';
+const ago=iso=>{if(!iso)return'—';const s=(Date.now()-new Date(iso))/1e3;if(s<3600)return Math.max(1,s/60|0)+'m';if(s<86400)return(s/3600|0)+'h';if(s<86400*60)return(s/86400|0)+'d';if(s<86400*730)return(s/86400/30|0)+'mo';return(s/86400/365|0)+'y'};
+const eta=s=>!s||s>=8640000?'∞':s<60?s+'s':s<3600?(s/60|0)+'m':s<86400?(s/3600|0)+'h '+((s%3600)/60|0)+'m':(s/86400|0)+'d';
+const quality=t=>/2160p|4k|uhd/i.test(t)?'2160p':/1080p/i.test(t)?'1080p':/720p/i.test(t)?'720p':'SD';
+const qtag=q=>q==='SD'?'':`<span class="tag ${q==='2160p'?'q4k':q==='1080p'?'q1080':'q720'}">${q}</span>`;
+const KINDS=[['movies','Movies'],['tv','TV'],['audio','Audio'],['books','Books'],['software','Software'],['games','Games'],['xxx','XXX'],['other','Other']];
+const kindLabel=k=>(KINDS.find(x=>x[0]===k)||[,k])[1];
+const renamed=k=>k==='movies'||k==='tv';
+
+/* ---------- mobile ---------- */
+const mq=matchMedia('(max-width:820px)'),mobile=()=>mq.matches;
+const closeOverlays=()=>document.body.classList.remove('drawer','sheet');
+$('#mfilter').onclick=()=>{document.body.classList.remove('sheet');document.body.classList.toggle('drawer')};
+$('#scrim').onclick=closeOverlays;$('#sheetclose').onclick=closeOverlays;
+mq.addEventListener('change',closeOverlays);
+
+/* ---------- views & sidebar ---------- */
+let view='search';
+const sidebars={
+  search:()=>`<div class="sh">Search filters</div>
+    ${sec('Search in',`${['all','movies','tv'].map(c=>`<div class="li ${$('#cat').value===c?'on':''}" onclick="setCat('${c}')">${{all:'All categories',movies:'Movies only',tv:'TV only'}[c]}</div>`).join('')}`)}
+    ${sec('Categories',catCounts())}
+    ${sec('Quality',`<div class="chips">${['2160p','1080p','720p','SD'].map(q=>`<button class="chip ${F.q.has(q)?'on':''}" onclick="toggleQ('${q}')">${q}</button>`).join('')}</div>`)}
+    ${sec('Sort by',[['seeders','Most seeds'],['score','Best match'],['size','Size'],['published','Newest']].map(([k,l])=>`<div class="li ${sortK===k?'on':''}" onclick="sortK='${k}';sortDir=-1;render();drawSide()">${l}</div>`).join(''))}
+    ${sec('Junk filter',`<label class="li"><input type="checkbox" ${J.cam?'checked':''} onchange="J.cam=this.checked;render();drawSide()">Hide CAM / TS / screeners<span class="n">${rows.filter(r=>r.flags.includes('cam')).length}</span></label>
+      <label class="li"><input type="checkbox" ${J.small?'checked':''} onchange="J.small=this.checked;render();drawSide()">Hide suspiciously small<span class="n">${rows.filter(r=>r.flags.includes('small')).length}</span></label>`)}
+    ${sec('Minimum seeders',`<div class="field"><input type="number" min="0" value="${F.seeds}" oninput="F.seeds=+this.value||0;render()"></div>`)}
+    ${sec('Indexers',idxCounts())}`,
+  downloads:()=>{const c=dlCounts();return`<div class="sh">Downloads</div>
+    ${sec('Status',['All','Downloading','Seeding','Completed','Paused','Errored'].map(s=>`<div class="li ${D.state===s?'on':''}" onclick="D.state='${s}';renderDl();drawSide()">${s}<span class="n">${c[s]||0}</span></div>`).join(''))}
+    ${sec('Type',[['All','All'],...KINDS].map(([s,l])=>`<div class="li ${D.kind===s?'on':''}" onclick="D.kind='${s}';renderDl();drawSide()">${l}<span class="n">${s==='All'?D.rows.length:D.rows.filter(t=>t.kind===s).length}</span></div>`).join(''))}`},
+  review:()=>`<div class="sh">Needs review</div>${sec('Why',`<div class="sidenote">Unclear names, no TMDb match, or the target already exists. Nothing is touched until you approve.</div>`)}`,
+  renamed:()=>`<div class="sh">Renamed</div>${sec('Show',[['all','All'],['active','Current'],['undone','Undone']].map(([s,l])=>`<div class="li ${N.f===s?'on':''}" onclick="N.f='${s}';renderRen();drawSide()">${l}<span class="n">${s==='all'?N.rows.length:N.rows.filter(r=>s==='undone'?r.undone:!r.undone).length}</span></div>`).join(''))}`,
+  watch:()=>`<div class="sh">Watchlist</div>${sec('How it works',`<div class="sidenote">Search for something, set the filters (quality, junk), then press <b>☆ Watch this search</b>. Scanarr re-checks it every ${S?.watch_hours||12} h and lists new releases here${S?.ntfy_url?' and on your phone':''}.</div>`)}`,
+  log:()=>`<div class="sh">Log</div>${sec('Show',['all','renamed','completed','review','subtitles','blocked','dead','error','undone'].map(s=>`<div class="li ${A.f===s?'on':''}" onclick="A.f='${s}';renderAct();drawSide()">${s[0].toUpperCase()+s.slice(1)}<span class="n">${s==='all'?A.rows.length:A.rows.filter(r=>r.status===s).length}</span></div>`).join(''))}`,
+  settings:()=>`<div class="sh">Settings</div>${sec('Sections',[['s-indexers','Prowlarr'],['s-qbit','qBittorrent'],['s-library','Folders & Renaming'],['s-subs','Subtitles'],['s-safety','Safety & Cleanup'],['s-schedule','Schedule'],['s-notify','Notifications'],['s-backup','Backup'],['s-login','Login']].map(([id,l])=>`<div class="li" onclick="document.getElementById('${id}').scrollIntoView({behavior:'smooth'})">${l}</div>`).join(''))}`,
+};
+const closed=new Set();
+function sec(title,body){return`<div class="sec ${closed.has(title)?'closed':''}"><div class="st" onclick="closed.has('${title}')?closed.delete('${title}'):closed.add('${title}');drawSide()">${title}</div><div class="sb">${body}</div></div>`}
+function drawSide(){$('#side').innerHTML=sidebars[view]()}
+function show(v){view=v;closeOverlays();$$('#actbar button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));
+  if(v==='downloads')loadDl();if(v==='log')loadAct();if(v==='renamed')loadRen();if(v==='review')loadRev();if(v==='watch')loadWatch();if(v==='settings')loadSettings();drawSide()}
+$$('#actbar button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+
+/* ---------- search ---------- */
+let rows=[],sortK='seeders',sortDir=-1,selIdx=-1,shown=[];
+const F={q:new Set(),seeds:0,idx:new Set()};
+function setCat(c){$('#cat').value=c;drawSide();if($('#q').value.trim())$('#cmd').requestSubmit()}
+function toggleQ(q){F.q.has(q)?F.q.delete(q):F.q.add(q);render();drawSide()}
+function toggleIdx(n){F.idx.has(n)?F.idx.delete(n):F.idx.add(n);render();drawSide()}
+const CATLIST=['Movies','TV','Audio','Books','PC','Console','XXX','Other'];
+let hiddenCats=new Set(['XXX']);try{const h=localStorage.getItem('scanarr.hiddenCats');if(h)hiddenCats=new Set(JSON.parse(h))}catch{}
+function toggleCat(c){hiddenCats.has(c)?hiddenCats.delete(c):hiddenCats.add(c);try{localStorage.setItem('scanarr.hiddenCats',JSON.stringify([...hiddenCats]))}catch{};render();drawSide()}
+function catCounts(){const c={};rows.forEach(r=>c[r.category]=(c[r.category]||0)+1);
+  return CATLIST.filter(k=>!rows.length||c[k]).map(k=>`<label class="li"><input type="checkbox" ${hiddenCats.has(k)?'':'checked'} onchange="toggleCat('${k}')">${k}${rows.length?`<span class="n">${c[k]||0}</span>`:''}</label>`).join('')}
+function idxCounts(){if(!rows.length)return'<div class="li dim">Search to see indexers</div>';const c={};rows.forEach(r=>c[r.indexer]=(c[r.indexer]||0)+1);
+  return Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([n,k])=>`<label class="li"><input type="checkbox" ${F.idx.has(n)?'':'checked'} onchange="toggleIdx('${esc(n).replace(/'/g,"\\'")}')">${esc(n)}<span class="n">${k}</span></label>`).join('')}
+$('#cmd').onsubmit=async e=>{e.preventDefault();const q=$('#q').value.trim();if(!q)return;if(mobile())$('#q').blur();
+  show('search');$('#qlabel').textContent='— '+q;$('#rcount').textContent='Searching all indexers…';$('#rerrs').innerHTML='';
+  try{const d=await api(`/api/search?q=${encodeURIComponent(q)}&cat=${$('#cat').value}`);rows=d.results.map(r=>({...r,quality:r.quality||quality(r.title),flags:r.flags||[]}));F.idx.clear();selIdx=-1;
+    lastQ={q,cat:$('#cat').value};$('#watchbtn').hidden=false;
+    $('#rerrs').innerHTML=d.errors.map(x=>`<span class="pill bad" title="${esc(x.error)}">${esc(x.indexer)} failed</span>`).join(' ');render();drawSide();
+    if(shown.length)select(0)}
+  catch(err){rows=[];render();$('#rcount').innerHTML=`<span class="bad">${esc(err.message)}</span>`}};
+$('#ftext').oninput=render;
+$$('#rtable th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=sortK===k?-sortDir:(k==='title'||k==='indexer'?1:-1);sortK=k;render()});
+const J={cam:true,small:false};
+const flagTag=f=>({cam:'<span class="tag fbad" title="Camera / telesync recording - poor quality">CAM</span>',
+  small:'<span class="tag fwarn" title="Much smaller than normal for this quality - often fake or very low quality">⚠ small</span>'}[f]||'');
+function render(){
+  const words=$('#ftext').value.toLowerCase().split(/\s+/).filter(Boolean);
+  shown=rows.filter(r=>words.every(w=>r.title.toLowerCase().includes(w))&&(!F.q.size||F.q.has(r.quality))&&r.seeders>=F.seeds&&!F.idx.has(r.indexer)&&!hiddenCats.has(r.category)
+      &&!(J.cam&&r.flags.includes('cam'))&&!(J.small&&r.flags.includes('small')))
+    .sort((a,b)=>{const x=a[sortK]??'',y=b[sortK]??'';return(x>y?1:x<y?-1:0)*sortDir});
+  $$('#rtable th').forEach(th=>{th.classList.toggle('s',th.dataset.k===sortK);th.classList.toggle('asc',th.dataset.k===sortK&&sortDir===1)});
+  const best=shown.filter(r=>r.score>0&&!r.flags.includes('cam')&&!r.flags.includes('small')).reduce((a,b)=>!a||b.score>a.score?b:a,null);
+  $('#rtable tbody').innerHTML=shown.map((r,i)=>`<tr data-i="${i}" class="${i===selIdx?'sel':''}"><td title="${esc(r.title)}">${r===best?'<span class="best" title="Best mix of quality, size and seeds for your preferences">★ Best</span>':''}${esc(r.title)}${qtag(r.quality)}${r.flags.map(flagTag).join('')}</td><td class="dim">${esc(r.category)}</td><td class="dim">${esc(r.indexer)}</td>
+    <td class="num">${size(r.size)}</td><td class="num ${r.seeders?'ok':'dim'}">${r.seeders}</td><td class="num dim">${r.leechers}</td><td class="num dim">${ago(r.published)}</td><td class="mact monly"><button class="btn xs" data-dl="${i}">Download</button></td></tr>`).join('');
+  $('#rtable').hidden=!rows.length;$('#rempty').hidden=!!rows.length;
+  if(rows.length){const hid=rows.length-shown.length;$('#rcount').textContent=`${shown.length} of ${rows.length} results`+(hid?` · ${hid} hidden by filters`:'')}
+}
+$('#rtable tbody').onclick=e=>{const b=e.target.closest('[data-dl]');if(b){e.stopPropagation();const i=+b.dataset.dl;send(i,shown[i].kind);return}
+  const tr=e.target.closest('tr');if(tr){select(+tr.dataset.i);if(mobile())document.body.classList.add('sheet')}};
+$('#rtable tbody').ondblclick=e=>{const tr=e.target.closest('tr');if(tr)send(+tr.dataset.i,shown[+tr.dataset.i].kind)};
+async function select(i){
+  if(i<0||i>=shown.length)return;selIdx=i;$$('#rtable tbody tr').forEach(tr=>tr.classList.toggle('sel',+tr.dataset.i===i));
+  $(`#rtable tbody tr[data-i="${i}"]`)?.scrollIntoView({block:'nearest'});
+  const r=shown[i],k=r.kind;
+  $('#detail').innerHTML=`<div class="kv" style="margin-top:6px">
+    <div class="k">Release</div><div class="v big">${esc(r.title)}</div>
+    <div class="k">Will be saved as</div><div class="v" id="pvrow"></div>
+    <div class="k">Category</div><div class="v">${esc(r.category)}</div>
+    <div class="k">Size / Seeds</div><div class="v">${size(r.size)} · ${r.seeders} seeds · ${r.leechers} peers · ${esc(r.indexer)} · ${ago(r.published)} ago</div>
+    <div class="k">Info hash</div><div class="v">${esc(r.infohash||'—')}</div>
+    ${r.comments?`<div class="k">Page</div><div class="v"><a href="${esc(r.comments)}" target="_blank" rel="noopener" style="color:var(--acc2)">${esc(r.comments)}</a></div>`:''}
+    <div class="k"></div><div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+      <button class="btn" onclick="send(${i},$('#ktype').value)">Download</button>
+      <button class="btn sec2" onclick="peek(${i})" title="See the files first, pick episodes, then download">Peek files</button>
+      <select id="ktype" title="Download type" onchange="previewName(${i})">${KINDS.map(([v,l])=>`<option value="${v}"${v===k?' selected':''}>${l}</option>`).join('')}</select>
+      <button class="btn sec2" onclick="navigator.clipboard.writeText(shown[${i}].download).then(()=>toast('Magnet copied','ok'))">Copy magnet</button></div></div>`;
+  previewName(i);
+}
+async function previewName(i){const r=shown[i],k=$('#ktype').value;
+  $('#pvrow').innerHTML='<span class="dim">…</span>';
+  let p={};try{p=await api(`/api/preview?kind=${k}&title=${encodeURIComponent(r.title)}`)}catch{}
+  if(selIdx!==i||$('#ktype').value!==k)return;
+  const sys='font-family:system-ui,sans-serif';
+  if(!renamed(k)){$('#pvrow').innerHTML=`<span class="clean">${esc(p.folder||kindLabel(k))}</span><span class="dim" style="${sys}"> · original name kept</span>`;return}
+  $('#pvrow').innerHTML=`<span class="clean">${esc(p.name||'')}</span> <span class="dim" style="${sys}">+ subtitles · title/year confirmed with TMDb</span>`+
+    (p.exists?`<div class="warn" style="${sys};margin-top:3px">⚠ Already in your library: ${esc(p.exists)}</div>`:'')}
+async function send(i,kind,force=false){return sendR(shown[i],kind,force)}
+async function sendR(r,kind,force=false){
+  try{await api('/api/send',{method:'POST',body:JSON.stringify({download:r.download,kind,size:r.size,force})});toast(`Sent to qBittorrent → ${kindLabel(kind)}`,'ok');if(mobile())closeOverlays();pollStatus()}
+  catch(e){if(e.status===409&&!force){if(await confirmBox('Not enough free space',e.message,'Download anyway'))sendR(r,kind,true)}else toast(e.message,'bad')}}
+document.addEventListener('keydown',e=>{
+  const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if(e.key==='/'&&!typing){e.preventDefault();$('#q').focus();$('#q').select();return}
+  if(e.key==='Escape'&&typing){document.activeElement.blur();return}
+  if(typing||view!=='search'||!shown.length)return;
+  if(e.key==='ArrowDown'){e.preventDefault();select(Math.min(selIdx+1,shown.length-1))}
+  if(e.key==='ArrowUp'){e.preventDefault();select(Math.max(selIdx-1,0))}
+  if(e.key==='Enter'&&selIdx>=0)send(selIdx,$('#ktype')?.value||shown[selIdx].kind);
+});
+// resizable detail panel
+$('#sash').onmousedown=e=>{e.preventDefault();const y0=e.clientY,h0=$('#panel').offsetHeight;
+  const mv=ev=>document.documentElement.style.setProperty('--panelh',Math.max(60,Math.min(window.innerHeight-200,h0+y0-ev.clientY))+'px');
+  const up=()=>{removeEventListener('mousemove',mv);removeEventListener('mouseup',up)};addEventListener('mousemove',mv);addEventListener('mouseup',up)};
+
+/* ---------- peek ---------- */
+const P={h:null,kind:null,files:[],timer:null,t0:0};
+async function peek(i){const r=shown[i],kind=$('#ktype').value;const m=$('#pmodal');
+  m.querySelector('.mt').textContent=r.title;m.querySelector('.pwarn').innerHTML='';m.querySelector('.psum').textContent='';
+  m.querySelector('.pbody').innerHTML='<div class="dim" style="padding:16px">Asking peers for the file list… (nothing is downloaded yet)</div>';
+  m.querySelector('.pgo').disabled=true;m.querySelector('.pgo').style.display='';m.hidden=false;closeOverlays();
+  try{const d=await api('/api/peek',{method:'POST',body:JSON.stringify({download:r.download,infohash:r.infohash,kind})});P.h=d.hash;P.kind=kind;P.t0=Date.now();pollPeek()}
+  catch(e){m.querySelector('.pbody').innerHTML=`<div class="bad" style="padding:16px">${esc(e.message)}</div>`}}
+async function pollPeek(){clearTimeout(P.timer);if(!P.h||$('#pmodal').hidden)return;
+  try{const d=await api(`/api/peek/${P.h}?kind=${P.kind}`);
+    if(d.pending){const s=(Date.now()-P.t0)/1000;$('#pmodal .pbody').innerHTML=`<div class="dim" style="padding:16px">Asking peers for the file list… ${s|0}s${s>40?' · few peers online, this can take a while':''}</div>`;P.timer=setTimeout(pollPeek,1500);return}
+    P.files=d.files;$('#pmodal .pwarn').innerHTML=d.warnings.map(w=>`<div>⚠ ${esc(w)}</div>`).join('');
+    const anyVideo=d.files.some(f=>f.video&&!f.sample);
+    $('#pmodal .pbody').innerHTML=(d.files.length>1?`<label style="background:var(--side)"><input type="checkbox" id="pall" checked onchange="$$('#pmodal .pf').forEach(c=>c.checked=this.checked);peekSum()"><b>All files</b><span></span></label>`:'')+
+      d.files.map(f=>`<label class="${f.danger?'x':f.video&&!f.sample?'v':''}"><input type="checkbox" class="pf" data-id="${f.id}" ${(f.danger||f.sample||(anyVideo&&!f.video&&/\.(nfo|txt|jpg|png|url|exe|lnk)$/i.test(f.name)))?'':'checked'} onchange="peekSum()">
+        <span class="fn">${esc(f.name)}${f.danger?' <b class="bad">program file</b>':''}${f.sample?' <span class="dim">sample</span>':''}</span><span class="fs">${size(f.size)}</span></label>`).join('');
+    peekSum()}
+  catch(e){$('#pmodal .pbody').innerHTML=`<div class="bad" style="padding:16px">${esc(e.message)}</div>`}}
+function peekSum(){const sel=[...$$('#pmodal .pf')].filter(c=>c.checked).map(c=>+c.dataset.id);
+  const tot=P.files.filter(f=>sel.includes(f.id)).reduce((a,f)=>a+f.size,0);
+  $('#pmodal .psum').textContent=`${sel.length} of ${P.files.length} files · ${size(tot)}`;$('#pmodal .pgo').disabled=!sel.length}
+async function peekGo(){const skip=[...$$('#pmodal .pf')].filter(c=>!c.checked).map(c=>+c.dataset.id);
+  try{await api(`/api/peek/${P.h}/start`,{method:'POST',body:JSON.stringify({kind:P.kind,skip})});$('#pmodal').hidden=true;P.h=null;toast(`Downloading → ${kindLabel(P.kind)}`,'ok');pollStatus()}
+  catch(e){toast(e.message,'bad')}}
+async function peekCancel(){const h=P.h;P.h=null;clearTimeout(P.timer);$('#pmodal').hidden=true;if(h)try{await api(`/api/peek/${h}/cancel`,{method:'POST'})}catch{}}
+
+/* ---------- downloads ---------- */
+const D={rows:[],state:'All',kind:'All',sortK:'added_on',dir:-1,timer:null,sel:new Set(),anchor:null,list:[]};
+const stateName=s=>/^(downloading|forcedDL|metaDL|forcedMetaDL|allocating)$/.test(s)?'Downloading':/^(uploading|forcedUP|stalledUP|queuedUP|checkingUP)$/.test(s)?'Seeding':/^(stoppedUP|pausedUP)$/.test(s)?'Completed':/^(stoppedDL|pausedDL)$/.test(s)?'Paused':/error|missingFiles/.test(s)?'Errored':/stalledDL/.test(s)?'Stalled':/queuedDL/.test(s)?'Queued':/checking/.test(s)?'Checking':s;
+function dlCounts(){const c={All:D.rows.length};D.rows.forEach(t=>{const s=stateName(t.state);c[s]=(c[s]||0)+1;if(t.progress>=1)c.Completed=(c.Completed||0)+(s==='Seeding'?1:0)});return c}
+async function loadDl(){clearTimeout(D.timer);try{const d=await api('/api/downloads');D.rows=d.torrents;setQb(true,d)}catch(e){setQb(false)}
+  renderDl();if(view==='downloads')drawSide();if(view==='downloads')D.timer=setTimeout(loadDl,2000)}
+$$('#dtable th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;D.dir=D.sortK===k?-D.dir:-1;D.sortK=k;renderDl()});
+$('#dfilter').oninput=renderDl;
+function renderDl(){const w=$('#dfilter').value.toLowerCase();
+  const list=D.rows.filter(t=>{const s=stateName(t.state);return(D.state==='All'||s===D.state||(D.state==='Completed'&&t.progress>=1))&&(D.kind==='All'||t.kind===D.kind)&&t.name.toLowerCase().includes(w)})
+    .sort((a,b)=>{const x=a[D.sortK]??'',y=b[D.sortK]??'';return(x>y?1:x<y?-1:0)*D.dir});
+  $$('#dtable th').forEach(th=>{th.classList.toggle('s',th.dataset.k===D.sortK);th.classList.toggle('asc',th.dataset.k===D.sortK&&D.dir===1)});
+  D.list=list;const live=new Set(D.rows.map(t=>t.hash));[...D.sel].forEach(h=>live.has(h)||D.sel.delete(h));
+  $('#dcount').textContent=`${list.length} torrent${list.length===1?'':'s'}`+(D.sel.size?` · ${D.sel.size} selected`:'');
+  $$('.dact').forEach(b=>b.disabled=!D.sel.size);
+  $('#dtable tbody').innerHTML=list.map(t=>{const p=(t.progress*100),s=stateName(t.state),done=(t.tags||'').includes('scanarr-done');
+    return`<tr data-h="${t.hash}" class="${D.sel.has(t.hash)?'sel':''}"><td title="${esc(t.name)}">${esc(t.name)}${done?'<span class="tag" style="color:var(--ok);border-color:var(--ok)">renamed</span>':''}</td><td class="dim">${kindLabel(t.kind)}</td><td class="num">${size(t.size)}</td>
+      <td><div class="bar ${p>=100?'done':''}"><i style="width:${p}%"></i><span>${p.toFixed(p>=100?0:1)}%</span></div></td>
+      <td class="${s==='Errored'?'bad':s==='Downloading'?'':'dim'}">${s}</td><td class="num">${speed(t.dlspeed)}</td><td class="num dim">${speed(t.upspeed)}</td>
+      <td class="num dim">${t.progress>=1?'—':eta(t.eta)}</td><td class="num dim">${(t.ratio||0).toFixed(2)}</td></tr>`}).join('')
+    ||'<tr><td colspan="9" class="dim" style="text-align:center;padding:30px">No torrents here.</td></tr>';
+  const active=D.rows.filter(t=>stateName(t.state)==='Downloading').length;$('#dlbadge').hidden=!active;$('#dlbadge').textContent=active}
+
+$('#dtable tbody').onclick=e=>{const tr=e.target.closest('tr[data-h]');if(!tr)return;const h=tr.dataset.h;
+  if(e.shiftKey&&D.anchor){const ids=D.list.map(t=>t.hash),a=ids.indexOf(D.anchor),b=ids.indexOf(h);if(a>=0&&b>=0){if(!e.ctrlKey&&!e.metaKey)D.sel.clear();ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>D.sel.add(x))}}
+  else if(e.ctrlKey||e.metaKey){D.sel.has(h)?D.sel.delete(h):D.sel.add(h);D.anchor=h}
+  else{D.sel=new Set([h]);D.anchor=h}
+  renderDl()};
+$$('.dact').forEach(b=>b.onclick=()=>b.dataset.a==='delete'?askDelete():dlAction(b.dataset.a));
+async function dlAction(action,extra={}){const hashes=[...D.sel];if(!hashes.length)return;
+  try{await api('/api/downloads/'+action,{method:'POST',body:JSON.stringify({hashes,...extra})});
+    toast({start:'Resumed',stop:'Paused',recheck:'Rechecking',delete:'Removed'}[action]+` ${hashes.length} torrent${hashes.length===1?'':'s'}`,'ok');if(action==='delete')D.sel.clear();setTimeout(loadDl,400)}
+  catch(e){toast(e.message,'bad')}}
+function askDelete(){const n=D.sel.size;if(!n)return;const m=$('#modal');
+  m.querySelector('.mt').textContent=`Remove ${n} torrent${n===1?'':'s'}?`;m.querySelector('#delfiles').checked=false;m.hidden=false;m.querySelector('.mok').focus()}
+function closeModal(){$('#modal').hidden=true}
+document.addEventListener('keydown',e=>{if(view!=='downloads'||/INPUT|SELECT/.test(document.activeElement.tagName))return;
+  if(!$('#modal').hidden){if(e.key==='Escape')closeModal();return}if(!$('#cmodal').hidden)return;
+  if(e.key==='Delete'){e.preventDefault();askDelete()}
+  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();D.sel=new Set(D.list.map(t=>t.hash));renderDl()}});
+
+/* ---------- review ---------- */
+let RV=[];
+async function loadRev(){RV=await api('/api/reviews');renderRev();setRvBadge(RV.length)}
+function setRvBadge(n){$('#rvbadge').hidden=!n;$('#rvbadge').textContent=n;$('#st-rv').hidden=!n;$('#st-rv').textContent=`⚠ ${n} need${n===1?'s':''} review`}
+function renderRev(){
+  $('#rvlist').innerHTML=RV.map(r=>`<div class="card" data-id="${r.id}">
+    <div class="ct"><b>${esc(r.label)}</b><span class="tag">${esc(kindLabel(r.kind))}</span><span class="dim" style="margin-left:auto">${new Date(r.ts*1000).toLocaleString()}</span></div>
+    <div class="warn" style="margin:4px 0 10px">⚠ ${esc(r.reason)}</div>
+    ${r.items.map((it,k)=>`<div class="rvrow"><div class="dim" title="${esc(it.src)}">${esc(it.src_name)}</div><div class="arrow">→</div>
+      <input value="${esc(it.dst_rel.replace(/\.[^.\\/]+$/,''))}" data-k="${k}" placeholder="Movies/Title (Year)/Title (Year)"></div>`).join('')
+      ||'<div class="dim">No video file found in this torrent. Dismiss it, or remove the torrent in Downloads.</div>'}
+    <div style="display:flex;gap:8px;margin-top:10px">${r.items.length?`<button class="btn" onclick="approveRev(${r.id})">Approve &amp; rename</button>`:''}
+      <button class="btn sec2" onclick="dismissRev(${r.id})">Dismiss</button>
+      ${r.items.length?'<span class="dim" style="align-self:center">Extension is kept automatically. Subtitles are fetched for the original file first.</span>':''}</div></div>`).join('')
+    ||'<div class="empty"><h2>All clear</h2><div>Nothing needs your attention.</div></div>'}
+async function approveRev(id){const card=$(`.card[data-id="${id}"]`);const targets=[...card.querySelectorAll('input')].map(x=>x.value);
+  try{await api(`/api/reviews/${id}/approve`,{method:'POST',body:JSON.stringify({targets})});toast('Renamed','ok');loadRev()}catch(e){toast(e.message,'bad')}}
+async function dismissRev(id){await api(`/api/reviews/${id}/dismiss`,{method:'POST'});loadRev()}
+
+/* ---------- renamed (undo) ---------- */
+const N={rows:[],f:'all'};
+async function loadRen(){N.rows=await api('/api/renames');renderRen();if(view==='renamed')drawSide()}
+$('#nfilter').oninput=()=>renderRen();
+const base=p=>String(p||'').split(/[\\/]/).pop();
+function renderRen(){const w=$('#nfilter').value.toLowerCase();
+  const list=N.rows.filter(r=>(N.f==='all'||(N.f==='undone'?r.undone:!r.undone))&&(r.src+r.dst).toLowerCase().includes(w));
+  $('#ntable tbody').innerHTML=list.map(r=>`<tr style="${r.undone?'opacity:.5':''}"><td class="dim">${new Date(r.ts*1000).toLocaleString()}</td>
+    <td title="${esc(r.src)}">${esc(base(r.src))}</td><td class="clean" title="${esc(r.dst)}">${esc(base(r.dst))}</td>
+    <td class="dim">${r.subs.map(x=>x.split('.').slice(-2,-1)[0]).join(', ')||'—'}</td>
+    <td>${r.undone?'<span class="dim">undone</span>':`<button class="btn sec2 xs" onclick="subsFor(${r.id})" title="Wrong or out-of-sync subtitle? Pick another">Subs</button> <button class="btn sec2 xs" onclick="undoRen(${r.id})">Undo</button>`}</td></tr>`).join('')
+    ||'<tr><td colspan="5" class="dim" style="text-align:center;padding:30px">Nothing renamed yet.</td></tr>'}
+let SB={id:null};
+async function subsFor(id,lang){const langs=(S?.subtitle_languages||['en']);lang=lang||langs[0]||'en';SB.id=id;const r=N.rows.find(x=>x.id===id);const m=$('#pmodal');
+  m.querySelector('.mt').textContent=`Subtitles · ${base(r.dst)}`;m.querySelector('.pwarn').innerHTML='';m.querySelector('.pgo').style.display='none';
+  m.querySelector('.psum').innerHTML=langs.length>1?`Language: ${langs.map(l=>`<button class="chip ${l===lang?'on':''}" onclick="subsFor(${id},'${l}')">${l}</button>`).join(' ')}`:'';
+  m.querySelector('.pbody').innerHTML='<div class="dim" style="padding:16px">Searching OpenSubtitles…</div>';m.hidden=false;
+  try{const opts=await api(`/api/renames/${id}/subs?lang=${lang}`);
+    m.querySelector('.pbody').innerHTML=opts.map(o=>`<label onclick="pickSub(${id},'${lang}',${o.file_id})"><span>${o.hash_match?'<b class="ok" title="Made for this exact file">✓</b>':''}</span>
+      <span class="fn">${esc(o.release||'(no name)')}${o.machine?' <span class="warn">machine-translated</span>':''}${o.hi?' <span class="dim">HI</span>':''}</span><span class="fs">${o.downloads??0} ↓</span></label>`).join('')
+      ||'<div class="dim" style="padding:16px">No subtitles found for this language yet.</div>'}
+  catch(e){m.querySelector('.pbody').innerHTML=`<div class="bad" style="padding:16px">${esc(e.message)}</div>`}}
+async function pickSub(id,lang,fid){try{await api(`/api/renames/${id}/subs`,{method:'POST',body:JSON.stringify({lang,file_id:fid})});$('#pmodal').hidden=true;toast('Subtitle replaced','ok');loadRen()}catch(e){toast(e.message,'bad')}}
+async function undoRen(id){if(!await confirmBox('Undo rename?','The file gets its original name and location back (subtitles too).','Undo'))return;
+  try{await api(`/api/renames/${id}/undo`,{method:'POST'});toast('Restored original name','ok');loadRen()}catch(e){toast(e.message,'bad')}}
+$('#procnow').onclick=async()=>{await api('/api/process',{method:'POST'});toast('Checking…');setTimeout(()=>{loadRen();pollHealth(true)},4000)};
+
+/* ---------- watchlist ---------- */
+let lastQ=null,W=[];
+async function watchThis(){if(!lastQ){toast('Search for something first');return}
+  const filters={quality:[...F.q],hide_cam:J.cam,hide_small:J.small,min_seeds:F.seeds,hidden_cats:[...hiddenCats],must:$('#ftext').value.trim()};
+  try{await api('/api/watch',{method:'POST',body:JSON.stringify({query:lastQ.q,cat:lastQ.cat,filters,seen:rows.map(r=>r.infohash).filter(Boolean)})});
+    toast(`Watching "${lastQ.q}" - you'll see new releases in Watchlist`,'ok');pollHealth(true)}catch(e){toast(e.message,'bad')}}
+async function loadWatch(){W=await api('/api/watch');renderWatch()}
+function fsum(f){return [f.quality?.length?f.quality.join('/'):'any quality',f.hide_cam!==false?'no CAM':'',f.hide_small?'no small':'',f.min_seeds?`≥${f.min_seeds} seeds`:'',f.must?`contains "${f.must}"`:''].filter(Boolean).join(' · ')}
+function renderWatch(){
+  $('#wlist').innerHTML=W.map(w=>`<div class="card"><div class="ct"><b>${esc(w.query)}</b><span class="tag">${esc(w.cat)}</span><span class="dim" style="margin-left:8px">${esc(fsum(w.filters))}</span>
+      <span class="dim" style="margin-left:auto">checked ${ago(new Date(w.last_check*1000).toISOString())} ago</span></div>
+    ${w.hits.length?`<div style="margin-top:8px">${w.hits.map((h,k)=>`<div class="whit"><span class="${h.flags?.includes('small')?'warn':''}">${esc(h.title)}</span>${qtag(h.quality)}<span class="dim">${size(h.size)} · ▲${h.seeders} · ${esc(h.indexer)}</span>
+      <button class="btn xs" onclick="sendR(W.find(x=>x.id===${w.id}).hits[${k}],'${h.kind}')">Download</button></div>`).join('')}</div>`:'<div class="dim" style="margin-top:6px">Nothing new yet.</div>'}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sec2 xs" onclick="watchCheck(${w.id},this)">Check now</button>
+      ${w.hits.length?`<button class="btn sec2 xs" onclick="api('/api/watch/${w.id}/clear',{method:'POST'}).then(loadWatch).then(()=>pollHealth(true))">Clear new</button>`:''}
+      <button class="btn sec2 xs" style="color:var(--bad)" onclick="api('/api/watch/${w.id}/delete',{method:'POST'}).then(loadWatch).then(()=>pollHealth(true))">Stop watching</button></div></div>`).join('')
+    ||'<div class="empty"><h2>No saved searches</h2><div>Search for something that isn\'t out yet (e.g. "Dune Part Three 2160p"), set your filters, and press ☆ Watch this search.</div></div>'}
+async function watchCheck(id,btn){btn.disabled=true;btn.textContent='Checking…';try{const d=await api(`/api/watch/${id}/check`,{method:'POST'});toast(d.new?`${d.new} new`:'Nothing new','ok');loadWatch();pollHealth(true)}catch(e){toast(e.message,'bad');btn.disabled=false}}
+
+/* ---------- log ---------- */
+const A={rows:[],f:'all'};
+async function loadAct(){A.rows=await api('/api/activity');renderAct();if(view==='log')drawSide()}
+const evCls={renamed:'ok',completed:'ok',subtitles:'ok',undone:'dim',review:'warn',dead:'warn',blocked:'bad',error:'bad'};
+function renderAct(){const list=A.rows.filter(r=>A.f==='all'||r.status===A.f);
+  $('#atable tbody').innerHTML=list.map(x=>`<tr><td class="dim">${new Date(x.ts*1000).toLocaleString()}</td><td title="${esc(x.torrent)}">${esc(x.torrent)}</td>
+    <td class="${evCls[x.status]||'dim'}">${esc(x.status)}</td><td class="clean" title="${esc(x.target)}">${esc(base(x.target))}</td><td class="dim" title="${esc(x.message)}">${esc(x.message)}</td></tr>`).join('')
+    ||'<tr><td colspan="5" class="dim" style="text-align:center;padding:30px">Nothing yet.</td></tr>'}
+
+/* ---------- confirm dialog ---------- */
+function confirmBox(title,msg,okLabel='OK'){return new Promise(res=>{const m=$('#cmodal');m.querySelector('.mt').textContent=title;m.querySelector('.mm').textContent=msg;
+  const ok=m.querySelector('.mok'),no=m.querySelector('.mno');ok.textContent=okLabel;m.hidden=false;ok.focus();
+  const done=v=>{m.hidden=true;ok.onclick=no.onclick=null;res(v)};ok.onclick=()=>done(true);no.onclick=()=>done(false)})}
+
+/* ---------- settings ---------- */
+let S=null;
+const getP=(o,p)=>p.split('.').reduce((a,k)=>a?.[k],o);
+const setP=(o,p,v)=>{const ks=p.split('.'),l=ks.pop();ks.reduce((a,k)=>a[k]??={},o)[l]=v};
+function renderKinds(){$('#kindrows').innerHTML=KINDS.map(([k,l])=>`<tr><td>${l}${renamed(k)?' <span class="tag">renamed</span>':''}</td><td><input data-p="categories.${k}"></td><td><input data-p="subfolders.${k}"></td></tr>`).join('')+
+  `<tr><td>Incoming</td><td class="dim">—</td><td><input data-p="subfolders.incoming"></td></tr><tr><td>Unsorted</td><td class="dim">—</td><td><input data-p="subfolders.unsorted"></td></tr>`}
+async function loadHealthTable(){try{const d=await api('/api/indexer-health');
+  const cls={ok:'ok',slow:'warn',failing:'bad',skipped:'bad',unknown:'dim'};
+  $('#ihtable tbody').innerHTML=d.indexers.map(x=>`<tr><td>${esc(x.name)}</td><td class="${cls[x.status]}" title="${esc(x.last_error||'')}">${x.status==='skipped'?`skipped (${x.skip_mins} min)`:x.status}</td>
+    <td class="dim">${x.last_ms!=null?(x.last_ms/1000).toFixed(1)+' s':'—'}</td><td class="dim">${x.success!=null?x.success+'% of '+x.searches:'—'}</td>
+    <td>${x.status==='skipped'||x.status==='failing'?`<button class="btn sec2 xs" onclick="api('/api/indexer-health/reset',{method:'POST',body:JSON.stringify({name:'${esc(x.name).replace(/'/g,"\\'")}'})}).then(loadHealthTable)">Retry now</button>`:''}</td></tr>`).join('')
+    ||'<tr><td colspan="5" class="dim">No indexers yet.</td></tr>'}catch{}}
+async function loadSettings(){S=await api('/api/settings');renderKinds();loadHealthTable();api('/api/health').then(h=>showFolders(h.folders,h.qbit?.msg)).catch(()=>{});$$('[data-p]').forEach(el=>{let v=getP(S,el.dataset.p);if(Array.isArray(v))v=v.join(', ');el.value=String(v??'')});renderIdx();pollHealth(true)}
+function renderIdx(){$('#idxlist').innerHTML=S.indexers.map((x,i)=>`<div class="idxrow">
+  <input value="${esc(x.name)}" placeholder="Name" oninput="S.indexers[${i}].name=this.value">
+  <input value="${esc(x.url)}" placeholder="http://host:port/api" oninput="S.indexers[${i}].url=this.value">
+  <input value="${esc(x.apikey)}" type="password" placeholder="API key" oninput="S.indexers[${i}].apikey=this.value">
+  <input type="checkbox" title="Enabled" ${x.enabled!==false?'checked':''} onchange="S.indexers[${i}].enabled=this.checked">
+  <button class="btn sec2 xs" onclick="testIdx(${i},this)">Test</button><button class="btn sec2 xs" title="Remove" onclick="S.indexers.splice(${i},1);renderIdx()">✕</button></div>`).join('')||'<div class="dim" style="margin-bottom:8px">No indexers yet.</div>'}
+$('#addidx').onclick=()=>{S.indexers.push({name:'',url:'',apikey:'',enabled:true});renderIdx()};
+async function testIdx(i,btn){await saveSettings(true);try{await api('/api/test/indexer',{method:'POST',body:JSON.stringify({url:S.indexers[i].url})});btn.textContent='OK';btn.className='btn xs'}catch(e){btn.textContent='Failed';toast(e.message,'bad')}}
+async function saveSettings(quiet){$$('[data-p]').forEach(el=>{let v=el.value;const p=el.dataset.p;
+  if(p==='subtitle_languages')v=v.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);else if(el.hasAttribute('data-bool'))v=v==='true';else if(el.type==='number')v=parseFloat(v||'0');setP(S,p,v)});
+  S=await api('/api/settings',{method:'POST',body:JSON.stringify(S)});pollHealth(true);if(!quiet)toast('Settings saved','ok')}
+$('#save').onclick=()=>saveSettings().catch(e=>toast(e.message,'bad'));
+$('#testpr').onclick=async()=>{await saveSettings(true);$('#prres').innerHTML='<span class="dim">Connecting…</span>';$('#prlist').textContent='';
+  try{const d=await api('/api/test/prowlarr',{method:'POST'});$('#prres').innerHTML=`<span class="ok">Connected — ${d.indexers.length} indexer${d.indexers.length===1?'':'s'}</span>`;$('#prlist').textContent=d.indexers.join(' · ')||'No enabled torrent indexers in Prowlarr yet.';pollHealth(true)}
+  catch(e){$('#prres').innerHTML=`<span class="bad">${esc(e.message)}</span>`}};
+function showFolders(f,warn){$('#fldinfo').innerHTML=f?`<div class="k">Completed</div><div class="v">${esc(f.completed)}</div><div class="k">Temp</div><div class="v">${esc(f.temp||'(not set: downloads go straight to Completed)')}</div>`
+  :`<div class="k">Folders</div><div class="v bad" style="font-family:inherit">${esc(warn||'not available')}</div>`}
+$('#testqb').onclick=async()=>{await saveSettings(true);try{const d=await api('/api/test/qbit',{method:'POST'});$('#qbres').innerHTML=`<span class="ok">Connected — qBittorrent ${esc(d.version)}</span>`+(d.warning?` <span class="warn">${esc(d.warning)}</span>`:'');showFolders(d.folders,d.warning);pollStatus();pollHealth(true)}catch(e){$('#qbres').innerHTML=`<span class="bad">${esc(e.message)}</span>`}};
+
+$('#testntfy').onclick=async()=>{await saveSettings(true);try{await api('/api/test/notify',{method:'POST'});toast('Test notification sent','ok')}catch(e){toast(e.message,'bad')}};
+$('#restorefile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  if(!await confirmBox('Restore this backup?',`${f.name} will replace your current settings and history.`,'Restore'))return;
+  try{const r=await fetch('/api/restore',{method:'POST',body:f});const d=await r.json();if(!r.ok)throw new Error(d.detail);
+    toast(d.relogin?'Restored - the login changed to the one in the backup':'Restored','ok');loadSettings()}catch(err){toast(err.message,'bad')}};
+
+/* ---------- command palette ---------- */
+const CMDS=()=>[
+  ['Search: focus search box','/',()=>{show('search');setTimeout(()=>{$('#q').focus();$('#q').select()},50)}],
+  ['Go to Downloads','',()=>show('downloads')],['Go to Needs review','',()=>show('review')],['Go to Renamed','',()=>show('renamed')],
+  ['Go to Watchlist','',()=>show('watch')],['Go to Log','',()=>show('log')],['Go to Settings','',()=>show('settings')],
+  ['Check now (rename finished downloads, housekeeping)','',()=>api('/api/process',{method:'POST'}).then(()=>toast('Checking…'))],
+  ['Watch this search','',()=>watchThis()],
+  [`Junk filter: ${J.cam?'show':'hide'} CAM / TS`,'',()=>{J.cam=!J.cam;render();drawSide()}],
+  [`Junk filter: ${J.small?'show':'hide'} suspiciously small`,'',()=>{J.small=!J.small;render();drawSide()}],
+  ['Sort results by best match','',()=>{sortK='score';sortDir=-1;render();drawSide()}],
+  ['Sort results by seeds','',()=>{sortK='seeders';sortDir=-1;render();drawSide()}],
+  ['Downloads: pause all','',()=>api('/api/downloads/stop',{method:'POST',body:JSON.stringify({hashes:D.rows.map(t=>t.hash)})}).then(()=>toast('Paused all','ok'))],
+  ['Downloads: resume all','',()=>api('/api/downloads/start',{method:'POST',body:JSON.stringify({hashes:D.rows.map(t=>t.hash)})}).then(()=>toast('Resumed all','ok'))],
+  ['Settings: Prowlarr','',()=>{show('settings');setTimeout(()=>$('#s-indexers').scrollIntoView(),300)}],
+  ['Settings: qBittorrent','',()=>{show('settings');setTimeout(()=>$('#s-qbit').scrollIntoView(),300)}],
+  ['Settings: Schedule','',()=>{show('settings');setTimeout(()=>$('#s-schedule').scrollIntoView(),300)}],
+  ['Download backup','',()=>{location.href='/api/backup'}],
+  ['Sign out','',()=>$('#logout').click()],
+];
+let PAL={items:[],sel:0};
+function openPalette(){const m=$('#palette');m.hidden=false;const i=m.querySelector('input');i.value='';palFilter();i.focus()}
+function palFilter(){const q=$('#palette input').value.toLowerCase().trim();
+  PAL.items=CMDS().filter(([l])=>q.split(/\s+/).every(w=>l.toLowerCase().includes(w)));PAL.sel=0;palRender()}
+function palRender(){$('#palette .plist').innerHTML=PAL.items.map(([l,k],i)=>`<div class="pi ${i===PAL.sel?'on':''}" data-i="${i}">${esc(l)}${k?`<kbd>${k}</kbd>`:''}</div>`).join('')||'<div class="pi dim">No matching command</div>';
+  $('#palette .pi.on')?.scrollIntoView({block:'nearest'})}
+function palRun(i){const c=PAL.items[i];$('#palette').hidden=true;if(c)c[2]()}
+$('#palette input').oninput=palFilter;
+$('#palette .plist').onclick=e=>{const d=e.target.closest('[data-i]');if(d)palRun(+d.dataset.i)};
+$('#palette').onclick=e=>{if(e.target.id==='palette')$('#palette').hidden=true};
+$('#palette input').onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();PAL.sel=Math.min(PAL.sel+1,PAL.items.length-1);palRender()}
+  else if(e.key==='ArrowUp'){e.preventDefault();PAL.sel=Math.max(PAL.sel-1,0);palRender()}
+  else if(e.key==='Enter'){e.preventDefault();palRun(PAL.sel)}else if(e.key==='Escape')$('#palette').hidden=true};
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&(e.key==='k'||(e.shiftKey&&(e.key==='P'||e.key==='p')))){e.preventDefault();openPalette()}},true);
+
+/* ---------- status bar ---------- */
+const dot=ok=>ok===null||ok===undefined?'○':ok?'●':'✕';
+function setQb(ok,d){$('#st-qb').textContent=`${dot(ok)} qBittorrent`;$('#st-qb').className='s'+(ok?'':' sbad');
+  $('#st-speed').textContent=ok?`↓ ${speed(d.dl_speed)}   ↑ ${speed(d.up_speed)}`:''}
+async function pollHealth(force){try{const h=await api('/api/health'+(force?'?t='+Date.now():''));
+  $('#st-pr').textContent=`${dot(h.prowlarr.ok)} Prowlarr · ${h.prowlarr.msg}`;$('#st-pr').title=h.prowlarr.names.join(', ')||h.prowlarr.msg;$('#st-pr').className='s'+(h.prowlarr.ok?'':' sbad');
+  const low=(h.min_free_gb||0)*1024**3;
+  $('#st-disk').innerHTML=h.disk?Object.entries(h.disk).map(([k,v])=>`<span class="${v<low*1.5?'sbadt':''}">${k==='temp'?'Temp':'Completed'} ${size(v)} free</span>`).join(' · '):'';
+  $('#st-disk').title=h.folders?`Completed: ${h.folders.completed}\nTemp: ${h.folders.temp||'—'}`:'';
+  $('#st-subs').textContent=`${dot(h.subs.ok)} Subtitles · ${h.subs.msg}`+(h.subs_pending?` · ${h.subs_pending} retrying`:'');
+  $('#st-subs').className='s'+(h.subs.ok===false?' sbad':'');
+  setRvBadge(h.reviews);$('#wbadge').hidden=!h.watch_hits;$('#wbadge').textContent=h.watch_hits;
+  if(h.schedule&&!h.schedule.renaming_now){$('#st-rv').hidden=false;$('#st-rv').textContent=(h.reviews?`⚠ ${h.reviews} review · `:'')+`⏸ renaming from ${h.schedule.window.start}`}
+  $('#status').classList.toggle('off',!h.qbit?.ok);
+  if(h.worker?.last_error)$('#st-qb').title='Last problem: '+h.worker.last_error}catch{}}
+async function pollStatus(){if(view==='downloads')return;try{const d=await api('/api/downloads');D.rows=d.torrents;setQb(true,d);renderDl()}catch{setQb(false)}}
+$('#st-rv').onclick=()=>show('review');
+$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});location.href='/login'};
+api('/api/settings').then(s=>{S=s;J.cam=s.prefs?.hide_cam!==false;J.small=!!s.prefs?.hide_suspicious;$('#whoami').textContent=s.auth.username;if(!s.prowlarr.api_key&&!s.indexers.length)toast('Start by connecting Prowlarr in Settings')}).catch(()=>{});
+if(mobile())$('#q').placeholder='Search all indexers…';
+pollStatus();pollHealth();setInterval(pollStatus,10000);setInterval(pollHealth,30000);drawSide();
+</script>
+</body>
+</html>
