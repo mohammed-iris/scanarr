@@ -174,3 +174,38 @@ def test_gateway_passes_app_cookies_cleanly_and_never_scanarrs(monkeypatch):
     assert h["origin"] == "http://qbittorrent:8080"           # qBit's CSRF check passes
     assert "path=/qbit/" in r.headers["set-cookie"]
     assert c.get("/qbit/", headers={"cookie": "QBT_SID_8080=abc"}, follow_redirects=False).status_code in (302, 303, 307, 401)
+
+
+def test_prowlarr_still_starting_is_retried_soon(monkeypatch):
+    import httpx
+    import time
+    cfg = config.load()
+    cfg["stack"] = {"managed": True, "indexers": ["yts"], "rev": "r2"}
+    config.save(cfg)
+
+    class Q(FakeQ):
+        def version(self):
+            return "v5.3.1"
+
+        def ensure_category(self, c):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(bootstrap.QBit, "from_cfg", staticmethod(lambda c: Q()))
+
+    def down(cfg, wanted):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(bootstrap, "prowlarr_indexers", down)
+    bootstrap._next["prowlarr"] = 0
+    bootstrap.run(config.load())
+    assert bootstrap._next["prowlarr"] - time.time() <= bootstrap.STARTING_RETRY + 1
+    assert "starting" in bootstrap.report()["indexers"]["msg"]
+
+
+def test_api_keys_not_logged():
+    import logging
+    from app import main  # noqa: F401  (sets the levels)
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING

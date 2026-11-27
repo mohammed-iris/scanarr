@@ -545,16 +545,22 @@ def _verify(a, b):
     if not base:
         return {"ok": False, "summary": "Scanarr didn't start within 5 minutes - see its logs.", "checks": checks}
     checks["scanarr"] = True
-    rep = {}
+    rep, n, t0 = {}, 0, time.time()
     while time.time() < deadline:
         try:
             rep = c.get(f"{base}/api/setup-status").json()
             if rep.get("done"):
                 break
+            parts = [f"{k}: {v.get('msg')}" for k, v in (rep.get("report") or {}).items() if isinstance(v, dict)]
+            _step("Connect apps and test", "run", f"Scanarr is connecting qBittorrent and Prowlarr ({int(time.time() - t0)} s) - "
+                  + ("; ".join(parts) if parts else "waiting for the apps to finish starting"))
         except (httpx.HTTPError, ValueError):
             pass
-        c.post(f"{base}/api/process")
+        if n % 5 == 0:
+            c.post(f"{base}/api/process")       # nudge Scanarr's worker now and then, not every poll
+        n += 1
         time.sleep(4)
+    _step("Connect apps and test", "run", "Running a test search on your indexers…")
     checks["wiring"] = bool(rep.get("done"))
     hits = None
     try:

@@ -20,6 +20,9 @@ from .qbit import QBit, QBitError
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("scanarr")
+# httpx logs every request at INFO, including URLs that carry API keys: keep it quiet
+for _n in ("httpx", "httpcore"):
+    logging.getLogger(_n).setLevel(logging.WARNING)
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 _wake = asyncio.Event()

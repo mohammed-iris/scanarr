@@ -107,7 +107,8 @@ def prowlarr_indexers(cfg, wanted):
 
 
 _next = {"prowlarr": 0.0}
-RETRY_SECONDS = 120   # don't hold up the worker: Prowlarr is retried every 2 minutes at most
+RETRY_SECONDS = 120   # don't hold up the worker: a Prowlarr that's up but can't finish is retried every 2 minutes
+STARTING_RETRY = 15   # Prowlarr not answering yet (still starting): try again soon
 
 
 def run(cfg):
@@ -136,9 +137,11 @@ def run(cfg):
     try:
         prowlarr_indexers(cfg, st.get("indexers") or [])
     except Exception as e:
-        _next["prowlarr"] = time.time() + RETRY_SECONDS
+        starting = isinstance(e, (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError)) or \
+            (isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (502, 503))
+        _next["prowlarr"] = time.time() + (STARTING_RETRY if starting else RETRY_SECONDS)
         msg = str(e) if isinstance(e, RuntimeError) else f"waiting for Prowlarr ({str(e)[:80]})"
-        _report("indexers", False, msg[:200] + " - retrying every 2 minutes")
+        _report("indexers", False, ("waiting for Prowlarr to finish starting" if starting else msg[:200] + " - retrying every 2 minutes"))
         return False
     new = config.load()
     new.setdefault("stack", {})["bootstrap_done"] = True
