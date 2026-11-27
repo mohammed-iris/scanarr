@@ -804,7 +804,7 @@ document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&(e.key==='k'|
 /* ---------- apps & updates ---------- */
 let APPS=null;
 const pill=(ok,t)=>`<span class="${ok?'ok':'bad'}">${ok?'●':'✕'} ${esc(t)}</span>`;
-async function loadApps(){try{APPS=await api('/api/apps')}catch(e){$('#appsbox').innerHTML=`<div class="bad">${esc(e.message)}</div>`;return}renderApps()}
+async function loadApps(refresh){try{APPS=await api('/api/apps'+(refresh?'?refresh=1':''))}catch(e){$('#appsbox').innerHTML=`<div class="bad">${esc(e.message)}</div>`;return}renderApps()}
 function renderApps(){const a=APPS,u=a.update,q=a.qbit,p=a.prowlarr;
   const conn={connected:['ok','Reachable from the internet - best speed'],firewalled:['warn',`Not reachable from outside: downloads still work, but slower. Forward port ${q.torrent_port||'(your torrent port)'} (TCP+UDP) on your router to this machine.`],disconnected:['bad','No internet connection']}[q.connection]||null;
   const rep=a.setup?Object.entries(a.setup.report||{}).filter(([k])=>k!=='done').map(([k,v])=>`<div class="${v.ok?'ok':'warn'}" style="font-size:12px">${v.ok?'✓':'⚠'} ${esc(k)}: ${esc(v.msg)}</div>`).join(''):'';
@@ -820,7 +820,7 @@ function renderApps(){const a=APPS,u=a.update,q=a.qbit,p=a.prowlarr;
   <div class="card"><div class="ct"><b>Prowlarr</b>${pill(p.ok,p.ok?p.version:p.msg)}<span style="flex:1"></span>${p.open?`<a class="btn sec2 xs" href="${p.open}" target="_blank" rel="noopener" style="text-decoration:none">Open Prowlarr ↗</a>`:''}</div>
     <div class="dim" style="font-size:12px;margin-top:4px">Add or remove indexers there; Scanarr picks them up by itself.</div></div>
   ${a.jellyfin?`<div class="card"><div class="ct"><b>Jellyfin</b><span style="flex:1"></span><a class="btn sec2 xs" href="${esc(a.jellyfin.open)}" target="_blank" rel="noopener" style="text-decoration:none">Open Jellyfin ↗</a></div></div>`:''}
-  <div class="card"><div class="ct"><b>Scanarr</b><span class="dim">${esc(a.scanarr.version)}</span>${!u.available&&u.latest?'<span class="ok" style="font-size:12px">✓ up to date</span>':''}${u.error?`<span class="dim" style="font-size:12px">· update check: ${esc(u.error)}</span>`:''}</div>
+  <div class="card"><div class="ct"><b>Scanarr</b><span class="dim">${esc(a.scanarr.version)}</span>${!u.available&&u.latest?'<span class="ok" style="font-size:12px">✓ up to date</span>':''}${u.error?`<span class="dim" style="font-size:12px">· update check: ${esc(u.error)}</span>`:''}<span style="flex:1"></span><button class="btn sec2 xs" onclick="this.textContent='Checking…';loadApps(true)">Check for updates</button></div>
     <div class="dim" style="font-size:12px;margin-top:4px">Library: ${(a.library.files??'–').toLocaleString()} videos indexed · change tracking ${a.events.active?'on':'off ('+esc(a.events.reason)+')'}</div>
     ${a.setup?`<div style="margin-top:8px"><b style="font-size:12px">Setup</b> ${a.setup.done?'<span class="ok" style="font-size:12px">✓ complete</span>':'<span class="warn" style="font-size:12px">⏳ still finishing - retries by itself</span>'}${rep}</div>`:''}</div>
   <div class="card"><div class="ct"><b>Open on your phone</b></div><div style="display:flex;gap:16px;align-items:center;margin-top:8px;flex-wrap:wrap">

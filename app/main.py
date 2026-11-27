@@ -577,7 +577,7 @@ def setup_status():
 
 
 @app.get("/api/apps")
-async def apps(request: Request):
+async def apps(request: Request, refresh: bool = False):
     """Apps panel: qBittorrent/Prowlarr (opened through Scanarr), Jellyfin, versions, setup report, updates."""
     from . import bootstrap, fswatch, updates
     from .version import __version__
@@ -615,7 +615,7 @@ async def apps(request: Request):
         "prowlarr": {**pr, "open": "/prowlarr/" if "prowlarr" in tg else None},
         "jellyfin": ({"open": f"{request.url.scheme}://{host}:{st.get('jellyfin_port') or 8096}/"} if st.get("jellyfin") else None),
         "setup": {"done": bool(st.get("bootstrap_done")), "report": bootstrap.report()} if st.get("managed") else None,
-        "update": await asyncio.to_thread(updates.info),
+        "update": await asyncio.to_thread(updates.info, refresh),
         "library": activity.kv_json("library_stats") or {},
         "events": {"active": fswatch.STATE["active"], "reason": fswatch.STATE["reason"]},
     }

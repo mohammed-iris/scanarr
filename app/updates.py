@@ -48,8 +48,8 @@ def latest(force=False):
     return c
 
 
-def info():
-    c = latest()
+def info(force=False):
+    c = latest(force)
     return {"current": __version__, "latest": c.get("version"), "available": bool(c.get("version") and newer(c["version"], __version__)),
             "notes": c.get("notes", ""), "url": c.get("url"), "error": c.get("error"), "can_update": bool(AGENT_URL and AGENT_TOKEN)}
 
